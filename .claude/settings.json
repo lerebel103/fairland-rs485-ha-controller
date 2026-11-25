@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make check)",
+      "Bash(make lint)",
+      "Bash(make test)",
+      "Bash(make test-cov)",
+      "Bash(make format)",
+      "Bash(make modbus-map)",
+      "Bash(uv sync:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv run python scripts/render_modbus_map.py:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git worktree list:*)"
+    ],
+    "deny": [
+      "Read(./config.yaml)",
+      "Read(./.env)",
+      "Read(./**/*.secret.yaml)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/hooks/block_commit_on_main.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

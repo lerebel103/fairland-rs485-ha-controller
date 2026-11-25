@@ -1,0 +1,3 @@
+"""Version of the Fairland RS485 HA controller."""
+
+__version__ = "0.0.1"

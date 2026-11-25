@@ -1,0 +1,14 @@
+# MQTT broker (required)
+mqtt_host: "192.168.1.10"
+mqtt_port: 1883
+mqtt_username: "ha_user"
+mqtt_password: "secret"
+
+# Modbus TCP gateway wired to the heat pump's RS485 header.
+# The gateway must be in "Modbus TCP to RTU" mode, serial 9600 8N1.
+modbus_host: "192.168.1.40"
+modbus_port: 4196          # Waveshare default
+modbus_unit_id: 1
+
+# How often the heat pump is polled, in seconds
+poll_interval_s: 10

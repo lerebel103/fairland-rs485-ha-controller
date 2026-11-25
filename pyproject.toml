@@ -1,0 +1,45 @@
+[project]
+name = "fairland-rs485-ha-controller"
+version = "0.0.1"
+description = "Local Modbus TCP to MQTT bridge that exposes Fairland-built pool heat pumps to Home Assistant"
+requires-python = ">=3.14"
+dependencies = [
+    "pymodbus==3.16.1",
+    "aiomqtt==2.5.1",
+    "pyyaml==6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "hypothesis==6.170.13",
+    "pytest==9.2.0",
+    "pytest-asyncio==1.4.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.17.3",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["SIM", "A"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/version.py", "app/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 90
+
+[tool.hypothesis]
+database_backend = "directory"

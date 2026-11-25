@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Test and tool caches
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Configuration with secrets
+config.yaml
+*.local.yaml
+*.secret.yaml
+.env
+
+# Agent tooling: commit shared settings and skills, never local state or worktrees
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+!.claude/agents/
+!.claude/commands/
+.claude/worktrees/
+
+# Local agent notes (triage, investigation reports); never committed
+.agents/
+
+# User-supplied data handoff (CSVs, PDFs, logs, photos)
+incoming/
+
+# Docker local overrides
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+*.log

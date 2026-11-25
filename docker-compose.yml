@@ -1,0 +1,23 @@
+services:
+  fairland-rs485-ha-controller:
+    image: lerebel103/fairland-rs485-ha-controller:latest
+    pull_policy: always
+    container_name: fairland-rs485-ha-controller
+    restart: unless-stopped
+
+    # The app persists settings changed from Home Assistant back to this file
+    volumes:
+      - ./config.yaml:/etc/fairland-rs485-ha-controller/config.yaml:rw
+
+    # Host networking for direct access to the Modbus gateway and MQTT broker
+    network_mode: host
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=${TZ:-Australia/Perth}
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
