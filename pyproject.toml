@@ -4,18 +4,18 @@ version = "0.0.1"
 description = "Local Modbus TCP to MQTT bridge that exposes Fairland-built pool heat pumps to Home Assistant"
 requires-python = ">=3.14"
 dependencies = [
-    "pymodbus==3.16.1",
+    "pymodbus==3.16.2",
     "aiomqtt==2.5.1",
-    "pyyaml==6.0.3",
+    "pyyaml==6.0.4",
 ]
 
 [dependency-groups]
 dev = [
-    "hypothesis==6.170.13",
+    "hypothesis==6.170.17",
     "pytest==9.2.0",
-    "pytest-asyncio==1.4.1",
+    "pytest-asyncio==1.5.0",
     "pytest-cov==7.1.0",
-    "ruff==0.17.3",
+    "ruff==0.17.6",
 ]
 
 [tool.ruff]
