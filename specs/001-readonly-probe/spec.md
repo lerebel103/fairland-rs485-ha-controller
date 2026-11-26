@@ -44,7 +44,7 @@ The vendor's stated risk for an unlabelled read is that it "may return incorrect
 - **Block outcome**: exactly one of the following.
   - **ok**: a valid reply with the expected number of values.
   - **refused**: a valid Modbus exception response other than codes 0x0A and 0x0B. The pump answered and declined.
-  - **failed**: no usable answer from the pump. The reasons are: timeout; gateway exception (code 0x0A, gateway path unavailable, or 0x0B, target device failed to respond, which the gateway generates when the pump is silent); malformed reply (cannot be decoded as a Modbus frame); mismatched reply (unit id, function code or transaction id differs from the request); wrong number of values; connection lost.
+  - **failed**: no usable answer from the pump. The reasons are: no reply (no valid reply within the timeout; this includes silence and any frame the Modbus library discards as malformed or as not matching the request); gateway exception (code 0x0A, gateway path unavailable, or 0x0B, target device failed to respond, which the gateway generates when the pump is silent); wrong number of values; connection lost.
   - **not attempted**: the run ended before the block was read.
 
   When the extended flag is absent, extended blocks are not part of the run: they have no outcome and appear in neither the report, the counts nor the transcript.
@@ -73,7 +73,7 @@ The vendor's stated risk for an unlabelled read is that it "may return incorrect
 
 1. THE SYSTEM SHALL issue only Modbus function codes 01, 02, 03 and 04.
 2. THE SYSTEM SHALL NOT offer any command-line option or environment variable that changes the set of function codes issued.
-3. IF a request with a function code other than 01, 02, 03 or 04 is submitted to the probe's request sender, THEN THE SYSTEM SHALL reject it before anything is sent.
+3. THE SYSTEM SHALL route every request through one request sender whose only operation is reading a block, and which calls only the four read operations of the Modbus library.
 
 ### Requirement 3: Bus rules
 
@@ -85,10 +85,9 @@ The vendor's stated risk for an unlabelled read is that it "may return incorrect
 2. THE SYSTEM SHALL start every read at the first address of a standard block or an extended block as listed under Terms, and at no other address.
 3. THE SYSTEM SHALL send requests strictly one at a time, sending the next request only after the previous one has been answered or has timed out.
 4. THE SYSTEM SHALL wait at least 60 ms between the end of one request (reply received or timeout elapsed) and the start of the next.
-5. WHEN a malformed or mismatched reply is received, THE SYSTEM SHALL record the block as failed at once, without waiting for a further reply.
-6. WHEN a block's outcome is failed for any reason other than connection lost, THE SYSTEM SHALL wait at least 1 second before sending the next request, and SHALL discard anything received during that wait.
-7. THE SYSTEM SHALL NOT attribute a reply to any request other than the one it answers. WHEN a reply carries the transaction id of an earlier request, THE SYSTEM SHALL discard it and keep waiting for the pending request's reply until that request's timeout; such a reply is not a mismatched reply.
-8. THE SYSTEM SHALL NOT retry a block, whatever its outcome.
+5. THE SYSTEM SHALL use Modbus TCP framing (MBAP header with transaction ids), not RTU over TCP, and SHALL rely on the Modbus library to match each reply to its request by transaction id, so that a reply is never attributed to another request.
+6. WHEN a block's outcome is failed for any reason other than connection lost, THE SYSTEM SHALL wait at least 1 second before sending the next request.
+7. THE SYSTEM SHALL NOT retry a block, whatever its outcome, and SHALL disable the Modbus library's automatic retries and automatic reconnection.
 
 ### Requirement 4: Confirming the preconditions
 
@@ -186,7 +185,7 @@ These bind the design and the tasks. They are not acceptance criteria.
 
 1. **Testable without hardware.** Every acceptance criterion above must be provable by an automated test against a substitute for the Modbus connection. No test opens a network connection, and the request spacing and the post-timeout wait must be testable without real delays.
 2. **Single source for the map.** Block sizes, register definitions, decoding and fault decoding come from `app/modbus/registers.py`, `codec.py` and `faults.py`. The probe does not restate them; the labels for input registers 21 to 31, which are not in the map, are the probe's own and are marked unverified. The list of standard first addresses is added to `registers.py`, covered by the map doc check, so that spec 002's client uses the same list. The extended list belongs to the probe alone.
-3. **One request sender, under `app/modbus/`.** All probe requests pass through one object, which is where Requirement 2.3 is enforced. It and the rest of the probe live under `app/modbus/`, so that the safety review triggers on any change to them and `AGENTS.md`'s rule that only `app/modbus/` builds Modbus requests holds. Spec 002 decides whether its client reuses this sender.
+3. **One request sender, under `app/modbus/`, on `pymodbus`.** All probe requests pass through one object built on the project's pinned `pymodbus`, which is where Requirement 2.3 is enforced. It and the rest of the probe live under `app/modbus/`, so that the safety review triggers on any change to them and `AGENTS.md`'s rule that only `app/modbus/` builds Modbus requests holds. Spec 002 decides whether its client reuses this sender.
 4. **Coverage.** The probe is included in the coverage measurement and the project's coverage floor stays satisfied.
 5. **Documentation.**
    - Amended on this branch at this gate, following the maintainer's agreement to the exception:
@@ -202,14 +201,14 @@ These bind the design and the tasks. They are not acceptance criteria.
 
 ## Overview
 
-The probe does not use `pymodbus`. It speaks Modbus TCP itself over an asyncio stream, with a framing layer that can only encode the four read function codes. This gives direct control over transaction ids, late replies and timing, which the requirements depend on, and makes the read-only guarantee structural.
+The probe uses the project's pinned `pymodbus` (3.16.1) with its asynchronous Modbus TCP client and standard Modbus TCP framing. The gateway is configured as a Modbus TCP to RTU bridge. A thin wrapper, `ReadOnlyLink`, is the only code that touches the client; it exposes one operation, reading a block, and adds the vendor's spacing and the outcome classification.
 
 ```
 python -m app.modbus.probe
   cli (main)            arguments, pre-checks, prompt, signals, exit status
    └─ run_probe         block order, abort rules, extended rules
        └─ ReadOnlyLink  one request at a time, spacing, quiet wait, outcomes
-           └─ ByteStream (TcpByteStream in production, a fake in tests)
+           └─ pymodbus AsyncModbusTcpClient (a fake client in tests)
   render_report / build_transcript   pure functions over the ProbeRun
 ```
 
@@ -220,12 +219,12 @@ python -m app.modbus.probe
 | `app/modbus/registers.py` | modify | Add `STANDARD_BLOCK_STARTS` |
 | `scripts/render_modbus_map.py` | modify | Render a `read_blocks` generated block |
 | `docs/modbus-map.md` | modify | Replace the hand-written table under bus rule 1 with the `read_blocks` generated block |
-| `app/modbus/readonly_link.py` | create | Framing, `ByteStream`, `TcpByteStream`, `ReadOnlyLink`, result types |
+| `app/modbus/readonly_link.py` | create | Result types, `ReadClient`, `open_client`, `ReadOnlyLink` |
 | `app/modbus/probe.py` | create | Block plan, `run_probe`, CLI `main`, `__main__` guard |
 | `app/modbus/probe_report.py` | create | `render_report`, `build_transcript` |
-| `tests/unit/fakes.py` | create | `FakeStream`, `FakeClock` |
+| `tests/unit/fakes.py` | create | `FakeClient`, `FakeClock`, `FakeLink` |
 | `tests/unit/test_registers.py` | modify | Tests for `STANDARD_BLOCK_STARTS` |
-| `tests/unit/test_readonly_link.py` | create | Framing and link tests |
+| `tests/unit/test_readonly_link.py` | create | Link and `open_client` tests |
 | `tests/unit/test_probe.py` | create | `run_probe` and CLI tests |
 | `tests/unit/test_probe_report.py` | create | Report and transcript tests |
 | `README.md` | modify | "Verifying your heat pump" section with example commands |
@@ -263,10 +262,8 @@ class Outcome(StrEnum):
     NOT_ATTEMPTED = "not_attempted"
 
 class FailReason(StrEnum):
-    TIMEOUT = "timeout"
+    NO_REPLY = "no_reply"
     GATEWAY_EXCEPTION = "gateway_exception"
-    MALFORMED = "malformed_reply"
-    MISMATCHED = "mismatched_reply"
     WRONG_LENGTH = "wrong_length"
     CONNECTION_LOST = "connection_lost"
 
@@ -287,49 +284,40 @@ class BlockResult:
     reason: FailReason | None = None         # set only when outcome is FAILED
     exception_code: int | None = None        # set for REFUSED and for GATEWAY_EXCEPTION
 
-class ConnectionLost(Exception): ...
-
-class ByteStream(Protocol):
-    async def write(self, data: bytes) -> None: ...                    # raises ConnectionLost
-    async def read_exactly(self, n: int, timeout: float) -> bytes: ...  # raises TimeoutError, ConnectionLost
-    async def discard_for(self, seconds: float) -> None: ...            # read and drop input for this long; raises ConnectionLost
-    async def close(self) -> None: ...
+class ReadClient(Protocol):
+    """The part of pymodbus' AsyncModbusTcpClient that the link uses."""
+    @property
+    def connected(self) -> bool: ...
+    async def read_coils(self, address: int, *, count: int, device_id: int) -> Any: ...
+    async def read_discrete_inputs(self, address: int, *, count: int, device_id: int) -> Any: ...
+    async def read_holding_registers(self, address: int, *, count: int, device_id: int) -> Any: ...
+    async def read_input_registers(self, address: int, *, count: int, device_id: int) -> Any: ...
+    def close(self) -> None: ...
 ```
 
-### Framing (pure functions)
+### pymodbus facts this design relies on (3.16.1)
+
+- `AsyncModbusTcpClient(host, *, port, timeout, retries, reconnect_delay)`; the default framer is Modbus TCP (`FramerType.SOCKET`). `await client.connect()` returns a bool. `client.close()` is synchronous. `client.connected` is a bool property.
+- The four read methods are awaited and take `address` positionally and `count` and `device_id` as keywords.
+- A reply object has `isError()`. An error reply has `exception_code`. A bit reply has `bits` (a list of bools, padded to a multiple of 8). A register reply has `registers` (a list of ints).
+- No valid reply within the timeout raises `pymodbus.exceptions.ModbusIOException`. A lost or closed connection raises `pymodbus.exceptions.ConnectionException`. Both derive from `ModbusException`.
+- The library matches replies to requests by transaction id and drops frames that do not match.
+
+### `open_client`
 
 ```python
-READ_FUNCTION_CODES: frozenset[int] = frozenset({0x01, 0x02, 0x03, 0x04})
+READ_METHODS: dict[Table, str] = {
+    Table.COIL: "read_coils",
+    Table.DISCRETE_INPUT: "read_discrete_inputs",
+    Table.HOLDING: "read_holding_registers",
+    Table.INPUT: "read_input_registers",
+}
 GATEWAY_EXCEPTION_CODES: frozenset[int] = frozenset({0x0A, 0x0B})
-MAX_PDU_LENGTH = 253
 
-def build_request(transaction_id: int, unit_id: int, function_code: int, address: int, count: int) -> bytes
+async def open_client(host: str, port: int, timeout: float) -> ReadClient
 ```
 
-Raises `ValueError` when `function_code` is not in `READ_FUNCTION_CODES`. This is the single enforcement point of Requirement 2.3. Returns 12 bytes, big-endian: transaction id (2), protocol id `0x0000` (2), length `0x0006` (2), unit id (1), function code (1), address (2), count (2).
-
-```python
-@dataclass(frozen=True, slots=True)
-class Header:
-    transaction_id: int
-    protocol_id: int
-    length: int        # unit id + PDU
-    unit_id: int
-
-def parse_header(data: bytes) -> Header     # data is exactly 7 bytes
-def decode_bits(payload: bytes, count: int) -> tuple[int, ...]       # LSB first within each byte
-def decode_registers(payload: bytes) -> tuple[int, ...]              # big-endian unsigned 16-bit
-```
-
-### `TcpByteStream`
-
-```python
-class TcpByteStream:
-    @classmethod
-    async def open(cls, host: str, port: int, timeout: float) -> "TcpByteStream"
-```
-
-`open` wraps `asyncio.wait_for(asyncio.open_connection(host, port), timeout)` and raises `OSError` (including `TimeoutError`) on failure. `read_exactly` wraps `reader.readexactly` in `asyncio.wait_for`; `asyncio.IncompleteReadError`, `ConnectionError` and `OSError` other than `TimeoutError` become `ConnectionLost`. `write` writes and drains, mapping `ConnectionError`/`OSError` to `ConnectionLost`. `discard_for` reads up to 256 bytes at a time until the period elapses, mapping end of stream to `ConnectionLost`. `close` closes the writer and awaits `wait_closed`, swallowing `OSError`. Tests patch `asyncio.open_connection`; no socket is opened.
+Creates `AsyncModbusTcpClient(host, port=port, timeout=timeout, retries=0, reconnect_delay=0)`. `retries=0` and `reconnect_delay=0` switch off the library's automatic retries and reconnection (Requirement 3.7). Awaits `asyncio.wait_for(client.connect(), timeout)`. If that returns false, times out or raises, it calls `client.close()` and raises `ConnectionError`. Tests replace `AsyncModbusTcpClient` in this module with a fake class; no socket is opened.
 
 ### `ReadOnlyLink`
 
@@ -338,34 +326,31 @@ MIN_GAP_S = MIN_REQUEST_GAP_S          # 0.06, from registers.py
 QUIET_AFTER_FAILURE_S = 1.0
 
 class ReadOnlyLink:
-    def __init__(self, stream: ByteStream, *, unit_id: int, timeout: float,
+    def __init__(self, client: ReadClient, *, unit_id: int,
                  allowed: frozenset[BlockSpec],
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
                  monotonic: Callable[[], float] = time.monotonic) -> None
     async def read_block(self, spec: BlockSpec) -> BlockResult
-    async def close(self) -> None
+    def close(self) -> None
     @property
     def connection_lost(self) -> bool
 ```
 
-`read_block` never raises for bus conditions; it always returns a `BlockResult`. It raises `ValueError`, before writing anything, when `spec` is not in `allowed` (Requirement 3.2 by construction) or when `build_request` rejects the function code (Requirement 2.3). Algorithm:
+`read_block` is the link's only request operation, and `READ_METHODS` is the only way it reaches the client, so no write can be issued through it (Requirement 2.3). It never raises for bus conditions; it always returns a `BlockResult`. It raises `ValueError`, before calling the client, when `spec` is not in `allowed` (Requirement 3.2 by construction). Algorithm:
 
-1. If `spec not in allowed`, raise `ValueError`. If `connection_lost` is already true, return `FAILED / CONNECTION_LOST` without writing.
-2. If a previous request ended less than `MIN_GAP_S` ago by `monotonic()`, `await sleep(remaining)`.
-3. Increment the transaction id (16-bit, starting at 1), build the request with `READ_FUNCTION_CODE[spec.table]`, `spec.start`, `spec.count`, and write it. Set `deadline = monotonic() + timeout`.
-4. Loop: read 7 header bytes with timeout `deadline - monotonic()` (if that is ≤ 0, the result is `TIMEOUT`).
-   - `protocol_id != 0`, or `length < 3`, or `length > MAX_PDU_LENGTH + 1` → `MALFORMED`.
-   - Otherwise read the `length - 1` PDU bytes within the same deadline.
-   - If the transaction id is one issued earlier by this link (lower than the pending id, allowing for wrap-around: `(pending - tid) % 65536` between 1 and 32767) → discard and continue the loop. This test also matches ids this link never issued; such a stray frame is discarded too and the block then ends as `TIMEOUT`, which is still a failed outcome.
-   - If the transaction id or the unit id differs otherwise → `MISMATCHED`.
-   - If the PDU's first byte is `function_code | 0x80` and the PDU is 2 bytes: code in `GATEWAY_EXCEPTION_CODES` → `FAILED / GATEWAY_EXCEPTION` with `exception_code`; any other code → `REFUSED` with `exception_code`.
-   - If the first byte is not the request's function code → `MISMATCHED`.
-   - Expected payload length is 6 bytes for every block (48 bits, or 3 registers). If the byte-count field or the actual payload length differs → `WRONG_LENGTH`.
-   - Otherwise decode and return `OK`.
-5. `TimeoutError` → `TIMEOUT`. `ConnectionLost` at any step → set `connection_lost`, return `CONNECTION_LOST`.
-6. Record the end time. If the outcome is `FAILED` with a reason other than `CONNECTION_LOST`, `await stream.discard_for(QUIET_AFTER_FAILURE_S)` before returning; a `ConnectionLost` raised there sets `connection_lost` and does not change the result.
+1. If `spec not in allowed`, raise `ValueError`.
+2. If `connection_lost` is already true, or `client.connected` is false, set `connection_lost` and return `FAILED / CONNECTION_LOST` without calling a read method.
+3. If a previous request ended less than `MIN_GAP_S` ago by `monotonic()`, `await sleep(remaining)`.
+4. `reply = await getattr(client, READ_METHODS[spec.table])(spec.start, count=spec.count, device_id=unit_id)`.
+   - `ConnectionException` → set `connection_lost`, result `FAILED / CONNECTION_LOST`.
+   - `ModbusIOException`, or any other `ModbusException` → `FAILED / NO_REPLY`. Catch `ConnectionException` first.
+   - `reply.isError()`: `exception_code` in `GATEWAY_EXCEPTION_CODES` → `FAILED / GATEWAY_EXCEPTION` with the code; any other code → `REFUSED` with the code.
+   - Bit tables: if `len(reply.bits) < spec.count` → `FAILED / WRONG_LENGTH`; otherwise the values are the first `spec.count` bits as 0/1.
+   - Register tables: if `len(reply.registers) != spec.count` → `FAILED / WRONG_LENGTH`; otherwise the values are the registers.
+5. Record the end time with `monotonic()`.
+6. If the outcome is `FAILED` with a reason other than `CONNECTION_LOST`, `await sleep(QUIET_AFTER_FAILURE_S)` before returning (Requirement 3.6).
 
-Because `discard_for` runs inside `read_block`, the next request is at least 1 s after a failure (Requirement 3.6), and step 2 guarantees the 60 ms gap otherwise (Requirement 3.4). `read_block` is awaited sequentially by `run_probe`, which gives Requirement 3.3.
+`read_block` is awaited sequentially by `run_probe`, which gives Requirement 3.3; step 3 gives Requirement 3.4. `close` calls `client.close()`.
 
 ## `app/modbus/probe.py`
 
@@ -423,11 +408,11 @@ InstallInterrupt = Callable[[Callable[[], None]], None]
 
 def main(argv: Sequence[str] | None = None, *,
          stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout, stderr: TextIO = sys.stderr,
-         open_stream: Callable[[str, int, float], Awaitable[ByteStream]] = TcpByteStream.open,
+         open: Callable[[str, int, float], Awaitable[ReadClient]] = open_client,
          install_interrupt: InstallInterrupt = install_signal_handlers) -> int
 
 def install_signal_handlers(on_interrupt: Callable[[], None]) -> None
-async def _run(args: argparse.Namespace, open_stream, should_stop: Callable[[], bool]) -> ProbeRun
+async def _run(args: argparse.Namespace, open, should_stop: Callable[[], bool]) -> ProbeRun
 ```
 
 The module ends with `if __name__ == "__main__": raise SystemExit(main())`.
@@ -440,12 +425,12 @@ Streams: the preconditions, the prompt and the report go to `stdout`; every erro
 
 - `install_signal_handlers` registers one handler for `SIGINT` and `SIGTERM` with `signal.signal`; the handler calls `on_interrupt()`.
 - `on_interrupt` sets `interrupted = True`. If `phase` is `"waiting"` it then raises `KeyboardInterrupt`; if `"running"` it returns, and the run stops at the next block boundary through `should_stop`.
-- `phase` is `"waiting"` from installation until the stream is open, covering the prompt and the connection attempt, and `"running"` from then until `run_probe` returns.
+- `phase` is `"waiting"` from installation until the client is connected, covering the prompt and the connection attempt, and `"running"` from then until `run_probe` returns.
 - `main` catches `KeyboardInterrupt` around the prompt and around `asyncio.run` and returns 130.
 - After `run_probe` returns, if `interrupted` is true `main` replaces the run's end with `dataclasses.replace(run, end=RunEnd.INTERRUPTED)`, whatever `run_probe` decided. So an interrupt during the last block, or during a block that also triggers an abort, is reported and exits as interrupted.
 - An interrupt while a block is in flight lets that block finish (at most one timeout), then stops.
 
-Tests never send a real signal. They pass their own `install_interrupt`, keep the callback it receives, and call it at the chosen moment: from a fake `stdin.readline` for the prompt, from a fake `open_stream` for the connection attempt, and from `FakeStream`'s `on_request` hook during a run.
+Tests never send a real signal. They pass their own `install_interrupt`, keep the callback it receives, and call it at the chosen moment: from a fake `stdin.readline` for the prompt, from a fake `open` for the connection attempt, and from `FakeClient`'s `on_request` hook during a run.
 
 ### Order of operations
 
@@ -457,7 +442,7 @@ Each step returns the stated status on failure.
 4. If `--yes` is absent and `stdin.isatty()` is false → 2, message names `--yes`.
 5. Call `install_interrupt(on_interrupt)`.
 6. If `--yes` is absent: print the preconditions and a prompt, read one line with `stdin.readline()`; proceed only if `line.rstrip("\r\n") == "yes"`. Anything else, including end of input (an empty string) → 2.
-7. `asyncio.run(_run(...))`. `_run` opens the stream (an `OSError` propagates to `main`, which prints a message naming host and port and returns 2), sets `phase = "running"`, builds a `ReadOnlyLink` with `allowed` set to the run's plan, awaits `run_probe`, and closes the link in a `finally`.
+7. `asyncio.run(_run(...))`. `_run` awaits `open(host, port, timeout)` (an `OSError`, which includes `ConnectionError`, propagates to `main`, which prints a message naming host and port and returns 2), sets `phase = "running"`, builds a `ReadOnlyLink` with `allowed` set to the run's plan, awaits `run_probe`, and closes the link in a `finally`.
 8. Apply the interrupt replacement described above, then print `render_report(run)`.
 9. If `--output` is given, write `json.dumps(build_transcript(...), indent=2)`, opening the file with mode `"x"`, or `"w"` when `--overwrite` is set. On `OSError` print the error and remember the failure.
 10. Exit status: 130 if `interrupted`; else 1 if any standard block's outcome is not `OK` or the transcript write failed; else 0.
@@ -475,7 +460,7 @@ Both are pure. `probe_version` is `app.version.__version__`.
 
 ### Report layout
 
-Plain text, sections in this order, each starting with the heading shown. This example is a run with the extended flag in which holding block 15 was refused and input block 9 timed out.
+Plain text, sections in this order, each starting with the heading shown. This example is a run with the extended flag in which holding block 15 was refused and input block 9 got no reply.
 
 ```
 == Summary: compare with the pump display ==
@@ -498,7 +483,7 @@ E3  protection  No water flow
   1  power_mode        Working mode selection        raw 1    silence  (0 smart, 1 silence, 2 super silence (community), 3 turbo (not on all models).)
   2  target_temp_auto  Auto mode target temperature  raw 112  26.0 °C
 [refused: exception 0x02] holding 15-17
-[failed: timeout] input 9-11
+[failed: no reply] input 9-11
 
 == Extended blocks (outside the vendor's allowed first addresses; unverified) ==
 [ok] input 21-23
@@ -554,25 +539,24 @@ Rules:
 
 `run_end` takes the `RunEnd` values, `outcome` the `Outcome` values, `reason` the `FailReason` values. `values` is null unless the outcome is ok. No other keys are written.
 
-## Open questions and assumptions
+## Decisions and assumptions
 
-- **No `pymodbus` in the probe.** The probe frames Modbus TCP itself because it needs control over transaction ids, late replies and timing that `pymodbus` does not expose, and because a layer that can only encode reads makes the read-only guarantee structural. Whether the controller's client (spec 002) reuses `ReadOnlyLink`'s framing or uses `pymodbus` is for spec 002. Task 11 records this in `docs/design-decisions.md`.
-- **Gateway behaviour is assumed, not known.** The design assumes the Waveshare gateway echoes the request's transaction id and unit id in each reply, and that a late RTU reply, if forwarded at all, carries the id of the request it answers. If the gateway instead stamps a late reply with the current id, the 1 s quiet wait after a timeout is the only protection. The first live run will show which.
-- **Gateway exception codes.** Whether the gateway returns 0x0B or simply stays silent when the pump does not answer is unknown. Both are handled as failed.
+- **`pymodbus` with Modbus TCP framing.** The maintainer decided the probe uses the pinned `pymodbus` and proper Modbus TCP framing. The gateway can also carry RTU over TCP; that mode is deliberately not used. The gateway's Modbus TCP to RTU behaviour is well understood and it is configured to follow the Modbus TCP specification, so matching replies to requests is left to the library's transaction ids. Task 10 records this in `docs/design-decisions.md`.
+- **Gateway exception codes.** Whether the gateway returns 0x0B or stays silent when the pump does not answer depends on its settings. Both are handled as failed.
+- **Library behaviour after a missing reply.** Whether `pymodbus` keeps the connection open after a `ModbusIOException` with `retries=0` is not relied on: step 2 of `read_block` checks `client.connected` before every request and reports a closed connection as connection lost.
 
 ## Test strategy
 
 - `tests/unit/fakes.py`:
   - `FakeClock`: `monotonic()` returns a float; `async sleep(s)` advances it and records the call.
-  - `FakeStream(clock, on_request=None)`: scripted with a list of actions per expected request (`reply(bytes)`, `timeout()`, `lost()`, `late(bytes)` to queue bytes ahead of the real reply). `on_request(index)` is called when the request with that zero-based index is written, which is how tests trigger an interrupt mid-run. Records every written request with the clock time, and every `discard_for` call (which advances the clock). Reply helpers build valid frames from a request so tests stay short.
+  - `FakeClient(clock, on_request=None)`: implements `ReadClient`. Scripted with one action per expected request: `bits([...])`, `registers([...])`, `error(code)`, `no_reply()` (raises `ModbusIOException`), `lost()` (raises `ConnectionException` and sets `connected` false). Records every call as (method name, address, count, device_id, clock time). `on_request(index)` is called at the start of the request with that zero-based index, which is how tests trigger an interrupt mid-run. Any attribute other than the `ReadClient` members raises `AssertionError`, so a test fails if the link reaches for a write method.
   - `FakeLink`: a `BlockReader` returning scripted `BlockResult`s and recording the specs it was asked for.
-- No test opens a socket. `TcpByteStream` is tested by patching `asyncio.open_connection` with fake reader and writer objects.
+- No test opens a socket. `open_client` is tested by replacing `AsyncModbusTcpClient` in `app.modbus.readonly_link` with a fake class.
 - Timing is asserted from the recorded clock times, never with real sleeps.
 - Properties (hypothesis):
-  - `build_request` rejects every function code outside `{1, 2, 3, 4}` for any other arguments.
+  - For any sequence of scripted client actions, the link calls only methods named in `READ_METHODS`, with the count from `READ_BLOCK_SIZE`.
   - For any sequence of scripted outcomes, `run_probe` returns exactly one result per planned block, in plan order, and never asks the link for a block not in the plan.
-  - For any sequence of scripted outcomes, every request `FakeStream` records starts at least 0.06 s after the previous one ended.
-  - `decode_registers(encode(values)) == values` for any three 16-bit values, and the same for 48 bits.
+  - For any sequence of scripted client actions, every recorded request starts at least 0.06 s after the previous one ended, and at least 1 s after a failed one.
 
 ## Verification commands
 
