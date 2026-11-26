@@ -36,6 +36,8 @@ These come from the vendor protocol notes and are binding on all code that talks
 2. **Request spacing.** Leave at least 60 ms between two requests.
 3. **Writes are single-point.** Function 05 for a coil, function 06 for a holding register.
 
+**Exception for the probe (decided 2026-11-26).** The read-only probe of spec 001 may read these extended blocks, with the vendor's fixed counts, when run with its extended flag: holding block 24, and input blocks 15, 18, 21, 24, 27 and 30. Values read this way are unverified. No other code may start a read off the allowed first addresses.
+
 `Register.block_start` gives the block that contains a register. Two cases fall outside the vendor's labelled first addresses and need the probe to settle them: holding register 25 (block 24) and input registers 15–20 (blocks 15 and 18, read successfully by a community project on InverX units).
 
 ## Decoding

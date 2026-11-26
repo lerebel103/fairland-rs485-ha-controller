@@ -1,28 +1,26 @@
 ---
 name: spec
-description: Create or advance a feature spec (requirements, design, tasks) under specs/, or implement the next task of an approved spec. Use when the user asks to start a feature, write or revise a spec, or work on a spec task.
+description: Plan a feature as a self-contained spec (spec.md and tasks.md) under specs/, or implement the next task of an approved spec. Use when the user asks to start a feature, write or revise a spec, or work on a spec task.
 ---
 
 # Spec-driven work
 
-The process and roadmap are in `specs/README.md`. Read it first.
+The rules are in `AGENTS.md` (Spec-driven development, Token and cost hygiene). Templates and the roadmap are in `specs/README.md`.
 
-## Starting or advancing a spec
+## Phase A: planning (top-tier model)
 
-1. Pick the spec from the roadmap, or agree a new number and kebab-case name with the user. Work on a `spec/NNN-<name>` branch in a worktree (`make worktree name=NNN-<name> type=spec`).
-2. Read `AGENTS.md` (safety rules), `docs/design-decisions.md`, `docs/domain-conventions.md` and, for anything touching the pump, `docs/modbus-map.md`.
-3. Write only the next gate's document:
-   - `requirements.md`: introduction, then numbered requirements, each with a user story and EARS acceptance criteria. Include failure cases (gateway down, bad reply, out-of-range command).
-   - `design.md`: components and interfaces, data models, error handling, test strategy, correctness properties. Reference requirement numbers.
-   - `tasks.md`: small test-first tasks, each listing the requirement numbers it covers. No task may be "deploy" or "test manually".
-4. Run the `spec-reviewer` subagent on the document. Give it the file path and the spec folder only, not your reasoning. Fix or decline each finding and re-run it until it reports no blocker or major finding (three rounds at most, then escalate).
-5. Present the document to the user with a short note: what the reviewer raised, what changed, what you declined and why. Do not start the next gate until they approve this one.
-6. Update the status column in `specs/README.md`.
+1. Pick the spec from the roadmap. Work on a `spec/NNN-<name>` branch in a worktree (`make worktree name=NNN-<name> type=spec`).
+2. Read `AGENTS.md`, `docs/design-decisions.md`, `docs/domain-conventions.md`, and `docs/modbus-map.md` when the pump is involved. Read existing code only where the feature touches it.
+3. Write `spec.md`: requirements with EARS acceptance criteria (include failure cases), then the design: exact file paths, signatures and types, schemas, error handling, and verification commands. It must be enough to implement from without reading anything it does not list.
+4. Write `tasks.md`: small test-first tasks, each with the requirement numbers it covers, the files it touches and the command that proves it. No manual or deployment tasks.
+5. Run the `spec-reviewer` subagent once on both files. Give it the paths only. Fix or decline each finding. If it raised a blocker or major finding, ask the same reviewer once to check the fixes; anything still open goes to the user.
+6. Set the status in `specs/README.md` to `planning`, then present both files to the user with a short note on what the reviewer raised and what you declined.
+7. Stop. Write no application code. After approval the user starts a fresh session for execution.
 
-## Implementing a task
+## Phase B: execution (Sonnet)
 
-1. Confirm all three documents are approved. Work on a `feature/<topic>` branch in a worktree.
-2. Take the next unticked task only. Write the failing test first, then the code.
-3. Run `make check`.
-4. Tick the task in `tasks.md`. If the spec turned out wrong, fix the spec in the same change.
-5. When the tasks for the PR are done, run the `review-loop` skill, then ask the user for permission and use the `open-pr` skill.
+1. Confirm the spec's status is `approved`. Work on a `feature/<topic>` branch in a worktree.
+2. Read only `spec.md`, `tasks.md` and the files the spec lists. If that is not enough, stop and say what is missing.
+3. Take the next unticked task. Write the failing test, then the code, then run the task's verification command.
+4. Tick the task `[x]`. If the same failure happens twice, stop and report it in five lines or fewer.
+5. When all tasks are ticked, run `make check`, then the `review-loop` skill, then ask the user before using `open-pr`.

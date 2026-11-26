@@ -10,13 +10,14 @@ Decisions made so far, with the reason for each. Add to this file when a spec se
 - **The register map is code.** `app/modbus/registers.py` is the single source of truth; the doc tables are rendered from it and checked in CI.
 - **Narrow write allowlist.** Power, operating mode, power mode and setpoints only. Service parameters can damage the unit if set badly, so they stay read-only even though the pump accepts writes.
 - **Vendor read shapes are mandatory.** The vendor says other shapes may return incorrect data, so the client reads fixed blocks and never single registers.
+- **The probe may read extended blocks (2026-11-26).** Holding register 25 and input registers 15–31 sit outside the vendor's labelled first addresses, and the only way to learn whether the AXCR21V serves them is to read them. The read-only probe may do so, opt-in per run, with the vendor's fixed counts; the controller may not. The risk the vendor states is incorrect data, so these values are reported as unverified. See `specs/001-readonly-probe/spec.md`.
 - **Read-only until verified.** No writes to the pump until the verification table in `docs/modbus-map.md` is complete for the AXCR21V.
 
 ## Open questions
 
 - Which control board the AXCR21V has, and whether it follows the MWH216 / MWH298 map at all.
 - Whether the gateway is powered from the header's 12 V or separately. The WiFi module draws little; the gateway's draw must be checked first.
-- Whether holding register 25 and input registers 15–31 can be read (they fall outside the vendor's labelled first addresses).
+- Whether holding register 25 and input registers 15–31 can be read on the AXCR21V. The probe is allowed to try (see Decided); the answer is open until it has run.
 - Whether the app should reassert the chosen power mode after a power cycle (one owner reports the unit falling back to silence).
 - Whether forced defrost should ever be exposed as a Home Assistant button.
 - Whether to expose a single climate entity, separate entities per setpoint, or both.

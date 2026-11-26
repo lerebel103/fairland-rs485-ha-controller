@@ -8,7 +8,7 @@ Every PR has already passed an agent review loop; its summary is in the PR descr
 
 - Any Modbus write (function 05 or 06) that does not go through `app/modbus/codec.py` `encode`, or that targets a register outside `APP_WRITABLE_KEYS` in `app/modbus/registers.py`. The allowlist is: power, operating mode, power mode and the three setpoints.
 - Any change to the allowlist or to `tests/unit/test_registers.py::test_app_write_allowlist_is_pinned` without a spec under `specs/` that calls for it.
-- Reads that are not fixed blocks (48 for coils and discrete inputs, 3 for input and holding registers) from the first addresses listed in `docs/modbus-map.md`, or requests sent less than 60 ms apart or concurrently.
+- Reads that are not fixed blocks (48 for coils and discrete inputs, 3 for input and holding registers) from the first addresses listed in `docs/modbus-map.md` (the read-only probe's opt-in extended blocks, listed in the same place, are the one approved exception), or requests sent less than 60 ms apart or concurrently.
 - A Home Assistant command that reaches state or the pump before its type, range and allowed values are validated.
 - Retry loops without backoff, or a write replayed after a reconnect without re-reading state.
 - Secrets or site-specific addresses committed anywhere except placeholders in `config.yaml.example`.

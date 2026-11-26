@@ -6,9 +6,9 @@ How a change goes from an idea to a merged pull request, who reviews it at each 
 
 | Role | Who | Does | Never does |
 |---|---|---|---|
-| Maintainer | the user | Approves each spec gate, gives permission to commit, push and open a PR, merges | |
+| Maintainer | the user | Approves each spec, gives permission to commit, push and open a PR, merges | |
 | Author | the main agent session | Writes specs, tests and code; triages and fixes review findings | Reviews its own work as the final word; merges |
-| Reviewers | subagents in `.claude/agents/`, each started with a fresh context | Read the change cold and report findings | Edit files, commit, or talk to the pump |
+| Reviewers | subagents in `.claude/agents/`, each with a pinned model (Sonnet; Opus for safety) and a fresh context | Read the change cold and report findings | Edit files, commit, or talk to the pump |
 | Copilot | GitHub Copilot code review on the PR | Independent second review from a different model | |
 | CI | GitHub Actions | Lint, map doc check, tests with coverage floor, Docker build | |
 
@@ -17,9 +17,9 @@ The author and the reviewer are always different contexts. A reviewer is given t
 ## Lifecycle
 
 ```
- spec gate (x3: requirements, design, tasks)
-   draft -> spec-reviewer loop -> maintainer approval
- implementation (per task)
+ planning session (top-tier model)
+   spec.md + tasks.md -> one spec-reviewer pass -> maintainer approval -> /clear
+ execution session (Sonnet), per task
    failing test -> code -> make check -> tick task
  pre-PR
    review loop (code-reviewer, plus safety-reviewer when the pump is in reach) -> clean
@@ -28,20 +28,19 @@ The author and the reviewer are always different contexts. A reviewer is given t
    CI + Copilot review -> pr-feedback loop -> maintainer review -> maintainer merges
 ```
 
-### 1. Spec gates
+### 1. Planning
 
-For each of `requirements.md`, `design.md` and `tasks.md`:
+Done in a planning session on the top-tier model. No application code is written.
 
-1. The author drafts the document (`spec` skill).
-2. The `spec-reviewer` subagent reviews it. The author fixes or declines each finding and re-runs the reviewer until it returns no blocker or major finding.
-3. The author presents the document to the maintainer with a short summary: what the reviewer raised, what changed, what was declined and why.
-4. The maintainer approves, or asks for changes, which restarts the loop.
-
-The next gate does not start before the maintainer approves the current one.
+1. The author drafts `spec.md` and `tasks.md` (`spec` skill).
+2. The `spec-reviewer` subagent reviews both once. The author fixes or declines each finding.
+3. If there were blocker or major findings, the same reviewer is asked once to check only the fixes.
+4. The author presents both files to the maintainer with a short note: what the reviewer raised, what changed, what was declined and why.
+5. The maintainer approves, or asks for changes. Then the session ends; execution starts in a fresh one.
 
 ### 2. Implementation
 
-One task from `tasks.md` at a time, on a branch in a worktree: failing test first, then code, then `make check`, then tick the task. If the code shows the spec was wrong, the spec is corrected in the same branch and the change is called out in the PR.
+Done in an execution session on Sonnet that reads only the spec, the tasks and the files the spec lists. One task from `tasks.md` at a time, on a branch in a worktree: failing test first, then code, then `make check`, then tick the task. If the code shows the spec was wrong, the spec is corrected in the same branch and the change is called out in the PR.
 
 ### 3. Pre-PR review loop
 
@@ -51,8 +50,8 @@ Before asking the maintainer for permission to open a PR, the author runs the `r
 2. Reviewers run in parallel on the branch diff against `main`:
    - `code-reviewer`: always.
    - `safety-reviewer`: when the diff touches `app/modbus/`, `app/control/`, command handling in `app/ha/`, `scripts/` that open a connection, or `docs/modbus-map.md`.
-3. The author triages every finding (see below), fixes what is accepted, and runs the reviewers again on the new diff.
-4. The loop ends when a round returns no blocker or major finding. After three rounds without that, the author stops and brings the disagreement to the maintainer.
+3. The author triages every finding (see below) and fixes what is accepted.
+4. If there were blocker or major findings, each reviewer that raised one is asked once to check only the fixes, in its existing context. There is no third round: anything still open at blocker or major level goes to the maintainer with both positions.
 
 ### 4. Pull request
 
@@ -91,14 +90,14 @@ A finding is declined when it is wrong, out of scope for the spec, or contrary t
 
 - No write outside the allowlist; every write goes through `codec.encode` and is read back.
 - No write path is reachable while the map is unverified for the AXCR21V.
-- Reads use the fixed block shapes and allowed first addresses; requests are serialised and at least 60 ms apart; only the Modbus client builds requests.
+- Reads use the fixed block shapes and allowed first addresses (the probe's opt-in extended blocks in `docs/modbus-map.md` are the one exception); requests are serialised and at least 60 ms apart; only the Modbus client builds requests.
 - Home Assistant commands are validated (type, range, allowed values) before they reach state or the pump.
 - Failure leaves the pump alone: no retry storm, bounded backoff, no write replayed after a reconnect without re-reading state.
 
 **Specs**
 
 - Requirements are testable EARS statements, cover failure cases, and do not contradict the safety rules or recorded decisions.
-- The design covers every requirement, names its interfaces and error handling, and lists properties worth testing.
+- The design covers every requirement and is execution-ready: exact file paths, signatures and types, schemas, error handling, and verification commands. Nothing is left for the implementer to discover.
 - Tasks are small, test-first, ordered so each leaves `make check` green, and every requirement is covered by at least one task.
 
 ## Definition of done for a PR
