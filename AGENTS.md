@@ -17,28 +17,50 @@ These protect real hardware. They override convenience.
 
 1. **Write allowlist.** The app may write only: coil 0 (power) and holding registers 0–4 (operating mode, power mode, three setpoints). Service parameters (pump, defrost, expansion valve), forced defrost and factory reset are never written. Widening the allowlist needs an approved spec. The allowlist is pinned by `tests/unit/test_registers.py`.
 2. **Unverified map.** The register map is not yet verified on the AXCR21V. Until the checks in `docs/modbus-map.md` (Verification) are filled in, nothing may write to the pump.
-3. **Bus rules.** Fixed read shapes (48 bits, or 3 registers, from an allowed first address), at least 60 ms between requests, one master on the bus. See `docs/modbus-map.md`.
+3. **Bus rules.** Fixed read shapes (48 bits, or 3 registers, from an allowed first address), at least 60 ms between requests, one master on the bus. See `docs/modbus-map.md`. One exception: the read-only probe may, when run with its extended flag, read the extended blocks listed there, which start on addresses the vendor does not label as allowed. The controller never does.
 4. **Live hardware needs permission.** Any command that reaches the real pump or gateway, even read-only, needs the user's go-ahead in that session. Follow the `live-probe` skill.
 
-## How work is done: specs first
+## Spec-driven development
 
-No feature code without an approved spec. Each feature has a folder `specs/NNN-<name>/` with three documents, approved by the user in order:
+Planning and execution are separate phases, run in separate sessions on different models. No feature code without an approved spec.
 
-1. `requirements.md`: user stories with EARS acceptance criteria.
-2. `design.md`: architecture, interfaces, data flow, error handling, test strategy.
-3. `tasks.md`: a numbered checklist; each task names the requirements it satisfies.
+### Phase A: planning (top-tier model, Fable)
 
-Then implement one task at a time, test-first, and tick it off. The roadmap and status are in `specs/README.md`. Use the `spec` skill.
+- **Goal:** a self-contained spec, so that execution needs no guesswork and no exploration.
+- **Output:** `specs/NNN-<name>/spec.md` and `specs/NNN-<name>/tasks.md`. Use the `spec` skill.
+- **`spec.md` must contain:**
+  - Requirements with EARS acceptance criteria, including edge cases and error handling.
+  - Exact file paths to create or modify.
+  - Explicit function signatures, input and output types, and data schemas.
+  - The exact commands that verify completion.
+- **`tasks.md`:** a numbered checklist of small, test-first tasks; each names the requirements it covers and the files it touches.
+- **Do not write application code in this phase.** Stop once both files are saved and reviewed, so the user can approve them and run `/clear`.
 
-## Review before anything reaches the maintainer
+### Phase B: execution (Sonnet)
 
-The full process is in `docs/ways-of-working.md`. In short:
+- **Goal:** implement `tasks.md` in order with minimal token overhead.
+- **Read only** the feature's `spec.md` and `tasks.md`, and the files the spec lists. Do not scan other directories. If the spec is not enough to proceed, stop and say what is missing; do not explore to fill the gap.
+- **Checkpoint:** mark a task `[x]` in `tasks.md` when its verification command passes.
+- When the tasks are done, run the `review-loop` skill, then ask the user before using `open-pr`.
 
-- **You do not review your own work.** Reviews are done by the subagents in `.claude/agents/` (`spec-reviewer`, `code-reviewer`, `safety-reviewer`), each started with a fresh context and given the artefact, not your reasoning.
-- **Spec gates**: run `spec-reviewer` and resolve its findings before presenting a spec document for approval.
-- **Code**: run the `review-loop` skill before asking to open a PR. `safety-reviewer` joins whenever the change can reach the pump. Loop until no blocker or major finding remains; after three rounds, escalate to the user.
-- **Findings** are triaged as fixed, declined with a reason, or deferred. A blocker cannot be declined by the author.
-- **Pull request**: opened with the `open-pr` skill once the user permits. GitHub Copilot then reviews it; handle its comments with the `pr-feedback` skill. The user merges.
+### Review
+
+Details are in `docs/ways-of-working.md`.
+
+- **You do not review your own work.** The subagents in `.claude/agents/` do, each with its own pinned model and a fresh context. Give them the artefact, not your reasoning.
+- **Planning:** one `spec-reviewer` pass on `spec.md` and `tasks.md` together before they go to the user.
+- **Execution:** `code-reviewer` before a PR; `safety-reviewer` too when the change can reach the pump.
+- **Rounds are capped:** one full review, then at most one follow-up in which the same reviewer checks only the fixes. A blocker or major finding still open after that goes to the user.
+- **Findings** are fixed, declined with a reason, or deferred. The author cannot decline a blocker.
+- **Pull request:** GitHub Copilot reviews it; handle its comments with `pr-feedback`. The user merges.
+
+## Token and cost hygiene
+
+- **Targeted reads.** Use grep or a line range when that is enough; do not read a whole large file.
+- **Concise output.** Keep replies brief. Do not repeat file contents or explain obvious changes.
+- **Fail fast.** If a test or build fails twice on the same issue, stop. Summarise the exact error and stack trace in five lines or fewer so the user can escalate to the planning model.
+- **No unsolicited refactors.** Touch only what the active `spec.md` requires.
+- **Subagents cost a full context each.** Start one only where this file calls for it, never to explore.
 
 ## Where knowledge lives
 
@@ -49,7 +71,7 @@ The full process is in `docs/ways-of-working.md`. In short:
 | Decisions and their reasons; open questions | `docs/design-decisions.md` |
 | Review loops, roles, severities, definition of done, GitHub settings | `docs/ways-of-working.md` |
 | Verification commands, worktrees, data handoff | `docs/dev-workflow.md` |
-| Spec roadmap and process | `specs/README.md` |
+| Spec roadmap and templates | `specs/README.md` |
 | Procedures | `.claude/skills/` (`spec`, `review-loop`, `open-pr`, `pr-feedback`, `modbus-register`, `live-probe`, `release`) |
 | Reviewer subagents | `.claude/agents/` (`spec-reviewer`, `code-reviewer`, `safety-reviewer`) |
 
