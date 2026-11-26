@@ -24,17 +24,18 @@ The stock WiFi module is itself a Modbus master. It must be unplugged while the 
 
 These come from the vendor protocol notes and are binding on all code that talks to the pump.
 
-1. **Fixed read shapes.** A read must start on an allowed first address and request a fixed count. Any other shape "may return incorrect data".
-
-   | Table | Count | Allowed first addresses (vendor) |
-   |---|---:|---|
-   | Coils (0x) | 48 | 0 |
-   | Discrete inputs (1x) | 48 | 0, 48 |
-   | Holding registers (4x) | 3 | 0, 3, 6, 9, 12, 15, 18 |
-   | Input registers (3x) | 3 | 0, 3, 6, 9, 12 |
-
+1. **Fixed read shapes.** A read must start on an allowed first address and request a fixed count. Any other shape "may return incorrect data". The allowed shapes are in the table below the rules.
 2. **Request spacing.** Leave at least 60 ms between two requests.
 3. **Writes are single-point.** Function 05 for a coil, function 06 for a holding register.
+
+<!-- BEGIN GENERATED: read_blocks -->
+| Table | Read function | Count | Allowed first addresses (vendor) |
+|---|---|---:|---|
+| coil | 01 | 48 | 0 |
+| discrete_input | 02 | 48 | 0, 48 |
+| holding | 03 | 3 | 0, 3, 6, 9, 12, 15, 18 |
+| input | 04 | 3 | 0, 3, 6, 9, 12 |
+<!-- END GENERATED: read_blocks -->
 
 **Exception for the probe (decided 2026-11-26).** The read-only probe of spec 001 may read these extended blocks, with the vendor's fixed counts, when run with its extended flag: holding block 24, and input blocks 15, 18, 21, 24, 27 and 30. Values read this way are unverified. No other code may start a read off the allowed first addresses.
 

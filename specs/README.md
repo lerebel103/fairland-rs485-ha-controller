@@ -28,7 +28,7 @@ Status values: `planned`, `planning`, `approved`, `in progress`, `done`.
 
 | # | Spec | Purpose | Status |
 |---|---|---|---|
-| 001 | `001-readonly-probe` | A read-only command-line probe that reads every block through the gateway and prints raw and decoded values, to verify the map on the AXCR21V | approved |
+| 001 | `001-readonly-probe` | A read-only command-line probe that reads every block through the gateway and prints raw and decoded values, to verify the map on the AXCR21V | done |
 | 002 | `002-modbus-client` | Async client: fixed block reads, request spacing, allowlisted writes with read-back, reconnect and backoff | planned |
 | 003 | `003-config-and-state` | Config loading and validation, `AppState`, debounced persistence of settings to `config.yaml` | planned |
 | 004 | `004-poll-loop` | Poll loop, immutable snapshots, command queue | planned |

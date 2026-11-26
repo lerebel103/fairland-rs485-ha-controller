@@ -11,6 +11,7 @@ Decisions made so far, with the reason for each. Add to this file when a spec se
 - **Narrow write allowlist.** Power, operating mode, power mode and setpoints only. Service parameters can damage the unit if set badly, so they stay read-only even though the pump accepts writes.
 - **Vendor read shapes are mandatory.** The vendor says other shapes may return incorrect data, so the client reads fixed blocks and never single registers.
 - **The probe may read extended blocks (2026-11-26).** Holding register 25 and input registers 15–31 sit outside the vendor's labelled first addresses, and the only way to learn whether the AXCR21V serves them is to read them. The read-only probe may do so, opt-in per run, with the vendor's fixed counts; the controller may not. The risk the vendor states is incorrect data, so these values are reported as unverified. See `specs/001-readonly-probe/spec.md`.
+- **`pymodbus` with Modbus TCP framing, not RTU over TCP.** The probe, and spec 002's client, use the pinned `pymodbus` and standard Modbus TCP (MBAP header, transaction ids) to the gateway, which is configured in Modbus TCP to RTU mode. Matching replies to requests is left to the library's transaction ids. RTU over TCP is deliberately not used. See `specs/001-readonly-probe/spec.md`.
 - **Read-only until verified.** No writes to the pump until the verification table in `docs/modbus-map.md` is complete for the AXCR21V.
 
 ## Open questions

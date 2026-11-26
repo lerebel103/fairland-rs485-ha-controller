@@ -344,6 +344,7 @@ class ReadOnlyLink:
 4. `reply = await getattr(client, READ_METHODS[spec.table])(spec.start, count=spec.count, device_id=unit_id)`.
    - `ConnectionException` → set `connection_lost`, result `FAILED / CONNECTION_LOST`.
    - `ModbusIOException`, or any other `ModbusException` → `FAILED / NO_REPLY`. Catch `ConnectionException` first.
+   - Any `OSError` → set `connection_lost`, result `FAILED / CONNECTION_LOST`.
    - `reply.isError()`: `exception_code` in `GATEWAY_EXCEPTION_CODES` → `FAILED / GATEWAY_EXCEPTION` with the code; any other code → `REFUSED` with the code.
    - Bit tables: if `len(reply.bits) < spec.count` → `FAILED / WRONG_LENGTH`; otherwise the values are the first `spec.count` bits as 0/1.
    - Register tables: if `len(reply.registers) != spec.count` → `FAILED / WRONG_LENGTH`; otherwise the values are the registers.
@@ -439,11 +440,11 @@ Each step returns the stated status on failure.
 
 1. Parse arguments with `argparse`. The epilog lists the three preconditions and the four exit statuses.
 2. Validate ranges: port 1–65535, unit id 1–247, timeout 0.5–30. → 2, message names the argument.
-3. If `--output` is given: the path must not exist unless `--overwrite`; its parent directory must exist and be writable (`os.access(parent, os.W_OK)`). → 2.
+3. If `--output` is given: the path must not be a directory, and must not exist unless `--overwrite`; its parent directory must exist and be writable (`os.access(parent, os.W_OK)`). → 2.
 4. If `--yes` is absent and `stdin.isatty()` is false → 2, message names `--yes`.
 5. Call `install_interrupt(on_interrupt)`.
 6. If `--yes` is absent: print the preconditions and a prompt, read one line with `stdin.readline()`; proceed only if `line.rstrip("\r\n") == "yes"`. Anything else, including end of input (an empty string) → 2.
-7. `asyncio.run(_run(...))`. `_run` awaits `open(host, port, timeout)` (an `OSError`, which includes `ConnectionError`, propagates to `main`, which prints a message naming host and port and returns 2), calls `on_connected()`, builds a `ReadOnlyLink` with `allowed` set to the run's plan, awaits `run_probe`, and closes the link in a `finally`.
+7. `asyncio.run(_run(...))`. `_run` awaits `open(host, port, timeout)` (an `OSError`, which includes `ConnectionError`, propagates to `main`, which prints a message naming host and port and returns 2), calls `on_connected()`, builds a `ReadOnlyLink` with `allowed` set to the run's plan, awaits `run_probe`, and closes the client in a `finally` that starts as soon as `open` returns, so an interrupt right after connecting still closes it. `ReadOnlyLink` also treats a raw `OSError` from a read as connection lost.
 8. Apply the interrupt replacement described above, then print `render_report(run)`.
 9. If `--output` is given, write `json.dumps(build_transcript(...), indent=2)`, opening the file with mode `"x"`, or `"w"` when `--overwrite` is set. On `OSError` print the error and remember the failure.
 10. Exit status: 130 if `interrupted`; else 1 if any standard block's outcome is not `OK` or the transcript write failed; else 0.

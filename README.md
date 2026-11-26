@@ -38,6 +38,28 @@ Opening the unit exposes mains voltage and may affect the warranty.
 
 [docs/modbus-map.md](docs/modbus-map.md) holds the full map, the bus rules and the write policy. It is not yet verified on the reference unit.
 
+## Verifying your heat pump
+
+The register map has not been checked against a TiLAB AXCR21V yet. A read-only probe reads every block once and prints the raw and decoded values so you can compare them with the pump's display. It never writes to the pump.
+
+Before you run it, unplug the stock WiFi module, stop the controller container and make sure no other client is connected to the gateway. The probe asks you to confirm this (`--yes` skips the prompt).
+
+From a checkout:
+
+```bash
+uv run python -m app.modbus.probe <host> --extended --output probe.json
+```
+
+From the Docker image:
+
+```bash
+docker run --rm -it --network host lerebel103/fairland-rs485-ha-controller .venv/bin/python -m app.modbus.probe <host>
+```
+
+`--extended` also reads the blocks outside the vendor's allowed first addresses; their values are reported as unverified. `--output` saves a JSON transcript, which holds no host name. Run with `--help` for the exit statuses.
+
+Record the results in the verification table in [docs/modbus-map.md](docs/modbus-map.md#verification-on-the-axcr21v), with the date, and keep the transcript as evidence.
+
 ## Quick start
 
 Not usable yet. Once the controller is implemented:

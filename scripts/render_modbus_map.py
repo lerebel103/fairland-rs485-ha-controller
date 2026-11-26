@@ -17,7 +17,15 @@ sys.path.insert(0, str(ROOT))
 
 from app.modbus.codec import decode  # noqa: E402
 from app.modbus.faults import FAULTS  # noqa: E402
-from app.modbus.registers import Codec, Register, Table, by_table  # noqa: E402
+from app.modbus.registers import (  # noqa: E402
+    READ_BLOCK_SIZE,
+    READ_FUNCTION_CODE,
+    STANDARD_BLOCK_STARTS,
+    Codec,
+    Register,
+    Table,
+    by_table,
+)
 
 DOC = ROOT / "docs" / "modbus-map.md"
 
@@ -66,9 +74,24 @@ def render_faults() -> str:
     return "\n".join(lines)
 
 
+_READ_BLOCK_ORDER = (Table.COIL, Table.DISCRETE_INPUT, Table.HOLDING, Table.INPUT)
+
+
+def render_read_blocks() -> str:
+    lines = [
+        "| Table | Read function | Count | Allowed first addresses (vendor) |",
+        "|---|---|---:|---|",
+    ]
+    for table in _READ_BLOCK_ORDER:
+        starts = ", ".join(str(a) for a in STANDARD_BLOCK_STARTS[table])
+        lines.append(f"| {table.value} | {READ_FUNCTION_CODE[table]:02d} | {READ_BLOCK_SIZE[table]} | {starts} |")
+    return "\n".join(lines)
+
+
 def blocks() -> dict[str, str]:
     rendered = {table.value: render_table(table) for table in Table}
     rendered["faults"] = render_faults()
+    rendered["read_blocks"] = render_read_blocks()
     return rendered
 
 
