@@ -132,7 +132,7 @@ The vendor's stated risk for an unlabelled read is that it "may return incorrect
 
 #### Acceptance criteria
 
-1. THE SYSTEM SHALL print, for each block, its table, first address and outcome, and for an ok block the raw value of every address in it.
+1. THE SYSTEM SHALL print, for each block, its table, first address and outcome, and for an ok block the raw value of every address in it. For a bit block the raw values may be printed as one string of 48 bits in address order.
 2. THE SYSTEM SHALL print, for each address that has an entry in the project's register map, the register key, its name, the raw value, the decoded value with its unit, and the register's notes, using the project's codec for decoding.
 3. THE SYSTEM SHALL print, for holding registers 0 and 1, the name of the operating mode and power mode that the raw value represents, or "unknown" when the value is not a defined mode.
 4. THE SYSTEM SHALL print the active faults from the discrete input block at address 48, with code, kind and description, or "none" when that block is ok and no fault bit is set.
@@ -412,7 +412,8 @@ def main(argv: Sequence[str] | None = None, *,
          install_interrupt: InstallInterrupt = install_signal_handlers) -> int
 
 def install_signal_handlers(on_interrupt: Callable[[], None]) -> None
-async def _run(args: argparse.Namespace, open, should_stop: Callable[[], bool]) -> ProbeRun
+async def _run(args: argparse.Namespace, open, should_stop: Callable[[], bool],
+               on_connected: Callable[[], None]) -> ProbeRun
 ```
 
 The module ends with `if __name__ == "__main__": raise SystemExit(main())`.
@@ -425,7 +426,7 @@ Streams: the preconditions, the prompt and the report go to `stdout`; every erro
 
 - `install_signal_handlers` registers one handler for `SIGINT` and `SIGTERM` with `signal.signal`; the handler calls `on_interrupt()`.
 - `on_interrupt` sets `interrupted = True`. If `phase` is `"waiting"` it then raises `KeyboardInterrupt`; if `"running"` it returns, and the run stops at the next block boundary through `should_stop`.
-- `phase` is `"waiting"` from installation until the client is connected, covering the prompt and the connection attempt, and `"running"` from then until `run_probe` returns.
+- `phase` is `"waiting"` from installation until the client is connected, covering the prompt and the connection attempt, and `"running"` from then until `run_probe` returns. The state belongs to `main`; `_run` cannot assign it, so `main` passes `on_connected`, a callback that sets `phase = "running"`, and `_run` calls it as soon as `open` returns.
 - `main` catches `KeyboardInterrupt` around the prompt and around `asyncio.run` and returns 130.
 - After `run_probe` returns, if `interrupted` is true `main` replaces the run's end with `dataclasses.replace(run, end=RunEnd.INTERRUPTED)`, whatever `run_probe` decided. So an interrupt during the last block, or during a block that also triggers an abort, is reported and exits as interrupted.
 - An interrupt while a block is in flight lets that block finish (at most one timeout), then stops.
@@ -442,7 +443,7 @@ Each step returns the stated status on failure.
 4. If `--yes` is absent and `stdin.isatty()` is false → 2, message names `--yes`.
 5. Call `install_interrupt(on_interrupt)`.
 6. If `--yes` is absent: print the preconditions and a prompt, read one line with `stdin.readline()`; proceed only if `line.rstrip("\r\n") == "yes"`. Anything else, including end of input (an empty string) → 2.
-7. `asyncio.run(_run(...))`. `_run` awaits `open(host, port, timeout)` (an `OSError`, which includes `ConnectionError`, propagates to `main`, which prints a message naming host and port and returns 2), sets `phase = "running"`, builds a `ReadOnlyLink` with `allowed` set to the run's plan, awaits `run_probe`, and closes the link in a `finally`.
+7. `asyncio.run(_run(...))`. `_run` awaits `open(host, port, timeout)` (an `OSError`, which includes `ConnectionError`, propagates to `main`, which prints a message naming host and port and returns 2), calls `on_connected()`, builds a `ReadOnlyLink` with `allowed` set to the run's plan, awaits `run_probe`, and closes the link in a `finally`.
 8. Apply the interrupt replacement described above, then print `render_report(run)`.
 9. If `--output` is given, write `json.dumps(build_transcript(...), indent=2)`, opening the file with mode `"x"`, or `"w"` when `--overwrite` is set. On `OSError` print the error and remember the failure.
 10. Exit status: 130 if `interrupted`; else 1 if any standard block's outcome is not `OK` or the transcript write failed; else 0.
@@ -507,7 +508,7 @@ Rules:
 
 - **Block line:** `[ok] <table> <start>-<end>`; `[refused: exception 0xNN]`; `[failed: <reason>]` where reason is the `FailReason` value with underscores as spaces, followed by ` (exception 0xNN)` for a gateway exception; `[not attempted]`. Exception codes are two upper-case hex digits.
 - **Register line** under an ok block, one per address: the address; the register key, or `-` when the map has no entry; the register's name; `raw <value>`; the decoded value with unit; the register's notes in parentheses when it has any. An address with no map entry shows the address, `-` and the raw value only.
-- **Bit blocks:** only addresses with a map entry get a line, followed by one line `other bits set: <addresses joined with ", ">` or `other bits set: none`. Discrete input block 48 lists no addresses and shows `see Active faults`.
+- **Bit blocks:** the first line under an ok bit block is `raw bits: ` followed by all 48 values as `0`/`1` in address order, in groups of 8 separated by a space, so every address's raw value is shown (Requirement 7.1). Then one register line per address that has a map entry, then one line `other bits set: <addresses joined with ", ">` or `other bits set: none`. Discrete input block 48 shows the `raw bits` line and `see Active faults`, with no register lines.
 - **Value formats:** a bit is `on` or `off`. A temperature has one decimal place and ` °C`. A `raw / 10` value has one decimal place and its unit. A raw value with a unit is the integer and the unit. Estimated power is rounded to a whole number of W, followed by ` (estimated: current x PFC voltage)`.
 - **Mode names** come from `OperatingMode` and `PowerMode`, lower-cased with underscores as spaces; an undefined value shows `unknown`.
 - **Suspect:** append ` SUSPECT (<why>)`. When several reasons apply, show the first in this order: `0 means unsupported`, `outside raw range`, `off raw step`, `implausible temperature`. Range and step checks apply only where the register defines `raw_min` and `raw_max`.
