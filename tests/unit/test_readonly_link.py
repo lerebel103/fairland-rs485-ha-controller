@@ -279,3 +279,27 @@ async def test_raw_oserror_is_connection_lost_and_later_blocks_not_sent():
     assert (result.outcome, result.reason) == (Outcome.FAILED, FailReason.CONNECTION_LOST)
     assert link.connection_lost
     assert clock.sleeps == []
+
+
+async def test_interrupt_during_spacing_sends_no_request_and_block_not_attempted():
+    clock = FakeClock()
+    client = FakeClient(clock, [registers([1, 2, 3]), registers([1, 2, 3])])
+    stop = {"flag": False}
+
+    async def sleep_then_interrupt(seconds):
+        await clock.sleep(seconds)
+        stop["flag"] = True
+
+    link = ReadOnlyLink(
+        client,
+        unit_id=1,
+        allowed=ALL_SPECS,
+        sleep=sleep_then_interrupt,
+        monotonic=clock.monotonic,
+        should_stop=lambda: stop["flag"],
+    )
+    await link.read_block(BlockSpec(Table.HOLDING, 0))
+    result = await link.read_block(BlockSpec(Table.HOLDING, 3))
+    assert result.outcome is Outcome.NOT_ATTEMPTED
+    assert result.values is None
+    assert len(client.calls) == 1

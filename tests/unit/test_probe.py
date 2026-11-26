@@ -517,3 +517,55 @@ def test_client_closed_when_interrupt_lands_right_after_open():
         probe_module._run = real_run
     assert h.client.closed == 1
     assert h.client.calls == []
+
+
+def test_run_passes_the_stop_predicate_to_the_link(monkeypatch):
+    import app.modbus.probe as probe_module
+
+    seen = {}
+    real = probe_module.ReadOnlyLink
+
+    def spy(client, **kwargs):
+        seen.update(kwargs)
+        return real(client, **kwargs)
+
+    monkeypatch.setattr(probe_module, "ReadOnlyLink", spy)
+    h = harness()
+    assert h.run(["gw", "--yes"]) == 0
+    assert callable(seen["should_stop"])
+    h.interrupt()  # phase is "running" no longer matters: the flag is what the predicate reads
+    assert seen["should_stop"]() is True
+
+
+def test_interrupt_while_report_is_printed_is_reflected_in_transcript_and_exit(tmp_path):
+    path = tmp_path / "t.json"
+    h = harness()
+
+    class Out(io.StringIO):
+        def write(self, text):
+            if "== Result ==" in text:
+                h.interrupt()
+            return super().write(text)
+
+    h.out = Out()
+    assert h.run(["gw", "--yes", "--output", str(path)]) == 130
+    assert json.loads(path.read_text())["run_end"] == "interrupted"
+
+
+def test_interrupt_while_transcript_is_built_rewrites_it_as_interrupted(tmp_path, monkeypatch):
+    import app.modbus.probe as probe_module
+
+    path = tmp_path / "t.json"
+    h = harness()
+    real_dumps = json.dumps
+    calls = {"n": 0}
+
+    def dumps(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            h.interrupt()
+        return real_dumps(*a, **k)
+
+    monkeypatch.setattr(probe_module.json, "dumps", dumps)
+    assert h.run(["gw", "--yes", "--output", str(path)]) == 130
+    assert real_dumps(json.loads(path.read_text())["run_end"]) == '"interrupted"'

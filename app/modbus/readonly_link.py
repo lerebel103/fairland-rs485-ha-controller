@@ -105,12 +105,14 @@ class ReadOnlyLink:
         allowed: frozenset[BlockSpec],
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         monotonic: Callable[[], float] = time.monotonic,
+        should_stop: Callable[[], bool] = lambda: False,
     ) -> None:
         self._client = client
         self._unit_id = unit_id
         self._allowed = allowed
         self._sleep = sleep
         self._monotonic = monotonic
+        self._should_stop = should_stop
         self._last_end: float | None = None
         self._connection_lost = False
 
@@ -132,6 +134,9 @@ class ReadOnlyLink:
             remaining = MIN_GAP_S - (self._monotonic() - self._last_end)
             if remaining > 0:
                 await self._sleep(remaining)
+                if self._should_stop():
+                    # Interrupted while waiting: an in-flight request may finish, a new one must not start.
+                    return BlockResult(spec, Outcome.NOT_ATTEMPTED)
 
         result = await self._request(spec)
         self._last_end = self._monotonic()

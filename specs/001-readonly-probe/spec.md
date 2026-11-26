@@ -431,6 +431,8 @@ Streams: the preconditions, the prompt and the report go to `stdout`; every erro
 - `main` catches `KeyboardInterrupt` around the prompt and around `asyncio.run` and returns 130.
 - After `run_probe` returns, if `interrupted` is true `main` replaces the run's end with `dataclasses.replace(run, end=RunEnd.INTERRUPTED)`, whatever `run_probe` decided. So an interrupt during the last block, or during a block that also triggers an abort, is reported and exits as interrupted.
 - An interrupt while a block is in flight lets that block finish (at most one timeout), then stops.
+- `ReadOnlyLink` also takes the stop predicate. After the spacing wait, immediately before sending, it checks the predicate and, if it is true, returns the block as `NOT_ATTEMPTED` without sending. So an interrupt during the 60 ms spacing never leads to a new request.
+- An interrupt that arrives while the report is printed or the transcript is produced still makes the exit status 130. The transcript is built from the run end current at that moment and is written again if the interrupt flag changed while it was being written, so the saved `run_end` agrees with the exit status. The report already printed to stdout is not reprinted.
 
 Tests never send a real signal. They pass their own `install_interrupt`, keep the callback it receives, and call it at the chosen moment: from a fake `stdin.readline` for the prompt, from a fake `open` for the connection attempt, and from `FakeClient`'s `on_request` hook during a run.
 

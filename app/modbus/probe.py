@@ -193,10 +193,40 @@ async def _run(
     try:
         on_connected()
         plan = standard_plan() + (extended_plan() if args.extended else ())
-        link = ReadOnlyLink(client, unit_id=args.unit_id, allowed=frozenset(plan))
+        link = ReadOnlyLink(client, unit_id=args.unit_id, allowed=frozenset(plan), should_stop=should_stop)
         return await run_probe(link, extended=args.extended, should_stop=should_stop)
     finally:
         client.close()
+
+
+def _write_transcript(
+    args: argparse.Namespace,
+    final_run: Callable[[], ProbeRun],
+    interrupted: Callable[[], bool],
+    stderr: TextIO,
+) -> bool:
+    """Write the transcript so its run end agrees with the exit status; True on success.
+
+    An interrupt that arrives while the transcript is being produced is picked up by
+    writing it again, so the saved file never says less than the exit status does.
+    """
+    from app.modbus.probe_report import build_transcript
+
+    mode = "w" if args.overwrite else "x"
+    try:
+        while True:
+            seen = interrupted()
+            transcript = build_transcript(
+                final_run(), port=args.port, unit_id=args.unit_id, timeout_s=args.timeout, probe_version=__version__
+            )
+            with Path(args.output).open(mode) as handle:
+                handle.write(json.dumps(transcript, indent=2) + "\n")
+            if interrupted() == seen:
+                return True
+            mode = "w"
+    except OSError as exc:
+        print(f"error: could not write the transcript: {exc}", file=stderr)
+        return False
 
 
 def main(
@@ -208,7 +238,7 @@ def main(
     open: OpenClient = open_client,  # noqa: A002
     install_interrupt: InstallInterrupt = install_signal_handlers,
 ) -> int:
-    from app.modbus.probe_report import build_transcript, render_report
+    from app.modbus.probe_report import render_report
 
     args = _parser().parse_args(argv)
 
@@ -247,21 +277,14 @@ def main(
     except OSError:
         return fail(f"could not connect to {args.host}:{args.port}")
 
-    if state["interrupted"]:
-        run = dataclasses.replace(run, end=RunEnd.INTERRUPTED)
-    print(render_report(run), file=stdout)
+    def final_run() -> ProbeRun:
+        return dataclasses.replace(run, end=RunEnd.INTERRUPTED) if state["interrupted"] else run
+
+    print(render_report(final_run()), file=stdout)
 
     transcript_failed = False
     if args.output:
-        transcript = build_transcript(
-            run, port=args.port, unit_id=args.unit_id, timeout_s=args.timeout, probe_version=__version__
-        )
-        try:
-            with Path(args.output).open("w" if args.overwrite else "x") as handle:
-                handle.write(json.dumps(transcript, indent=2) + "\n")
-        except OSError as exc:
-            print(f"error: could not write the transcript: {exc}", file=stderr)
-            transcript_failed = True
+        transcript_failed = not _write_transcript(args, final_run, lambda: state["interrupted"], stderr)
 
     if state["interrupted"]:
         return EXIT_INTERRUPTED
