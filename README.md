@@ -2,7 +2,7 @@
 
 A local bridge between Fairland-built pool heat pumps and Home Assistant. It reads and controls the pump over the RS485 Modbus port on its control board and publishes it to Home Assistant through MQTT discovery. No cloud and no Tuya account.
 
-**Status: scaffold.** The register map, tooling and specs process are in place. The controller itself is not implemented yet; see the [roadmap](specs/README.md).
+**Status: scaffold.** The register map, tooling and spec process are in place. The controller itself is not implemented yet; see the [roadmap](docs/roadmap.md).
 
 ## How it connects
 
@@ -81,16 +81,16 @@ make check
 
 ## Working with agents
 
-The project is spec-driven and set up for Claude Code. Other agent tools can read `AGENTS.md`.
+The project is spec-driven with [OpenSpec](https://github.com/Fission-AI/OpenSpec) and works with Claude Code, Kiro and GitHub Copilot, which all read `AGENTS.md`.
 
-- [AGENTS.md](AGENTS.md): git policy, heat pump safety rules, architecture. `CLAUDE.md` imports it.
-- [specs/](specs/README.md): the spec process and roadmap.
-- [docs/ways-of-working.md](docs/ways-of-working.md): review loops, roles, severities, definition of done and the GitHub settings to apply.
-- [docs/](docs/): `modbus-map.md`, `domain-conventions.md`, `design-decisions.md`, `dev-workflow.md`.
-- `.claude/skills/`: `spec`, `review-loop`, `open-pr`, `pr-feedback`, `modbus-register`, `live-probe`, `release`.
-- `.claude/agents/`: read-only reviewer subagents `spec-reviewer`, `code-reviewer`, `safety-reviewer`.
+- [AGENTS.md](AGENTS.md): safety rules, git policy, the plan/execute workflow and cost rules. `CLAUDE.md` imports it.
+- `openspec/`: `specs/` is what is built, `changes/` is work in flight, `config.yaml` holds project rules. [docs/roadmap.md](docs/roadmap.md) lists what is planned.
+- [docs/ways-of-working.md](docs/ways-of-working.md): the plan/execute/review lifecycle, roles, severities, definition of done and the GitHub settings to apply.
+- [docs/](docs/): `modbus-map.md`, `domain-conventions.md`, `design-decisions.md`, `architecture.md`, `dev-workflow.md`.
+- `.claude/skills/` and `.kiro/skills/`: the `openspec-*` skills, plus `modbus-register`, `live-probe` and `release` in `.claude/skills/`.
+- `.claude/agents/`: read-only reviewer subagents `code-reviewer` and `safety-reviewer`.
 - `.github/`: PR template, review instructions for GitHub Copilot, and a branch ruleset for `main`.
-- `.claude/settings.json`: shared permissions and a hook that blocks commits and pushes on `main`.
+- `.claude/settings.json`: shared permissions and a hook that blocks commits and pushes on `main`. `.pre-commit-config.yaml` blocks commits on `main` for every tool.
 - Worktrees live under `.claude/worktrees/` (`make worktree name=<topic>`).
 
 ## License

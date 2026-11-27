@@ -17,7 +17,7 @@ coverage.xml
 htmlcov/
 
 # Configuration with secrets
-config.yaml
+/config.yaml
 *.local.yaml
 *.secret.yaml
 .env

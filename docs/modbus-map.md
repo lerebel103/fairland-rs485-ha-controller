@@ -37,7 +37,7 @@ These come from the vendor protocol notes and are binding on all code that talks
 | input | 04 | 3 | 0, 3, 6, 9, 12 |
 <!-- END GENERATED: read_blocks -->
 
-**Exception for the probe (decided 2026-11-26).** The read-only probe of spec 001 may read these extended blocks, with the vendor's fixed counts, when run with its extended flag: holding block 24, and input blocks 15, 18, 21, 24, 27 and 30. Values read this way are unverified. No other code may start a read off the allowed first addresses.
+**Exception for the probe (decided 2026-11-26).** The read-only probe (`readonly-probe`) may read these extended blocks, with the vendor's fixed counts, when run with its extended flag: holding block 24, and input blocks 15, 18, 21, 24, 27 and 30. Values read this way are unverified. No other code may start a read off the allowed first addresses.
 
 `Register.block_start` gives the block that contains a register. Two cases fall outside the vendor's labelled first addresses and need the probe to settle them: holding register 25 (block 24) and input registers 15–20 (blocks 15 and 18, read successfully by a community project on InverX units).
 
@@ -61,7 +61,7 @@ The **Write** column has three values:
 - **device only**: the pump accepts writes, but the app must never issue one. This covers forced defrost, factory reset, and the pump, defrost and expansion-valve service parameters.
 - **—**: read-only on the pump.
 
-Moving a register to **app** needs an approved spec. `app/modbus/codec.py` refuses to encode a value for anything else, and a unit test pins the allowlist.
+Moving a register to **app** needs an approved OpenSpec change. `app/modbus/codec.py` refuses to encode a value for anything else, and a unit test pins the allowlist.
 
 ## Coils (read 01, write 05)
 
