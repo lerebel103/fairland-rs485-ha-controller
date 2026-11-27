@@ -105,3 +105,21 @@ def test_invalid_definitions_are_rejected(kwargs):
     base = {"key": "x", "table": Table.HOLDING, "address": 0, "name": "x"}
     with pytest.raises(ValueError):
         Register(**(base | kwargs))
+
+
+def test_standard_block_starts_are_the_vendor_list():
+    from app.modbus.registers import STANDARD_BLOCK_STARTS
+
+    assert STANDARD_BLOCK_STARTS == {
+        Table.COIL: (0,),
+        Table.DISCRETE_INPUT: (0, 48),
+        Table.HOLDING: (0, 3, 6, 9, 12, 15, 18),
+        Table.INPUT: (0, 3, 6, 9, 12),
+    }
+
+
+def test_standard_block_starts_are_multiples_of_the_block_size():
+    from app.modbus.registers import STANDARD_BLOCK_STARTS
+
+    for table, starts in STANDARD_BLOCK_STARTS.items():
+        assert all(start % READ_BLOCK_SIZE[table] == 0 for start in starts)

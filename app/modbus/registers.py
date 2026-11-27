@@ -79,6 +79,14 @@ READ_BLOCK_SIZE: dict[Table, int] = {
     Table.HOLDING: 3,
 }
 
+# First addresses the vendor table labels as allowed for a read (bus rule 1).
+STANDARD_BLOCK_STARTS: dict[Table, tuple[int, ...]] = {
+    Table.COIL: (0,),
+    Table.DISCRETE_INPUT: (0, 48),
+    Table.HOLDING: (0, 3, 6, 9, 12, 15, 18),
+    Table.INPUT: (0, 3, 6, 9, 12),
+}
+
 # Vendor rule: at least 60 ms between two requests from the master.
 MIN_REQUEST_GAP_S = 0.06
 

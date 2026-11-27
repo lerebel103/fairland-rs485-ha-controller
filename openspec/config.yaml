@@ -1,0 +1,38 @@
+schema: spec-driven
+githubCopilot:
+  cloudAgent: false
+
+context: |
+  Docker service bridging a Fairland-built pool heat pump (developed on a TiLAB TurboSilence AXCR21V) to
+  Home Assistant: Modbus TCP to an RS485 gateway on one side, MQTT discovery on the other. It controls real
+  hardware. Python 3.14, asyncio, ruff, pytest. Read AGENTS.md for the safety rules; they override any change.
+  Architecture: docs/architecture.md. Register map and bus rules: docs/modbus-map.md. Roadmap: docs/roadmap.md.
+  Verification: `make check`.
+  The register map is unverified on the AXCR21V; no change may make a pump write reachable until
+  docs/modbus-map.md (Verification) is filled in.
+
+rules:
+  proposal:
+    - State whether the change can reach the pump (any Modbus request). If it can, say so in the first paragraph.
+    - Widening the write allowlist (coil 0, holding registers 0-4) must be called out as its own decision.
+    - Keep it under one page and list what is out of scope.
+  specs:
+    - Cover failure cases (gateway unreachable, timeout, short or malformed reply, Modbus exception, MQTT disconnect, invalid command).
+    - Every scenario must be provable by an automated test with no hardware and no network.
+  design:
+    - Be execution-ready: exact file paths to create or modify, function signatures and types, schemas, error handling.
+    - List the only files the implementer needs to read, so that apply needs no exploration.
+    - Must not contradict AGENTS.md or docs/design-decisions.md; if it must, say so and stop for the maintainer.
+  tasks:
+    - Small, test-first, each leaves `make check` green. Name the scenarios covered, the files touched and the verifying command.
+    - No manual, deployment or live-hardware tasks; those are the maintainer's.
+
+operations:
+  apply:
+    guidance:
+      - Read only the change folder and the files its design lists. If that is not enough, stop and say what is missing.
+      - If the same test or build failure happens twice, stop and report the error in five lines or fewer.
+      - Tick a task when its verifying command passes. Do not commit or push without the maintainer's permission.
+  archive:
+    guidance:
+      - Archive only after the PR is merged or the maintainer asks. Update docs/roadmap.md and docs/design-decisions.md if the change settled an open question.

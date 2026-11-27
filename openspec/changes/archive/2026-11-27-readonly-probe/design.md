@@ -1,43 +1,6 @@
-# Spec 001: Read-only probe
+## Context
 
-Part 1 is the requirements. Part 2 is the design an implementer builds from. `tasks.md` is the work order.
-
-# Part 1: Requirements
-
-## Introduction
-
-The register map in `docs/modbus-map.md` comes from Fairland's protocol table and from community projects on other models. It has never been checked against the reference unit, a TiLAB TurboSilence AXCR21V. Every later spec depends on that map being right, and the project's safety rules forbid any write to the pump until it is verified.
-
-This spec delivers a command-line probe that connects to the pump through the RS485 gateway, reads the map once using only the vendor's read shapes, and reports the raw and decoded values so the maintainer can compare them with the pump's display and fill in the verification table.
-
-The probe never writes to the pump. It is a one-shot diagnostic tool, not part of the running controller.
-
-### In scope
-
-- One-shot, read-only reads of every block in the map over Modbus TCP.
-- A human-readable report and a machine-readable transcript.
-- Opt-in reads of blocks the vendor does not label as allowed first addresses.
-
-### Out of scope
-
-- Any Modbus write.
-- Continuous polling, MQTT, Home Assistant, and `config.yaml`.
-- Automatically editing `docs/modbus-map.md`. The maintainer records the results.
-- Auto-detecting serial settings or scanning for unit ids.
-
-### Deviation from bus rule 1
-
-`AGENTS.md` safety rule 3 and bus rule 1 in `docs/modbus-map.md` say a read must start on a first address the vendor labels as allowed. The extended blocks in this spec do not. This is a deliberate, narrow exception:
-
-- It applies to the probe only, never to the controller.
-- It is opt-in per run, read-only, and uses the vendor's fixed counts.
-- It covers exactly the blocks `docs/modbus-map.md` asks the probe to settle: holding register 25 (block 24) and input registers 15–20 "need the probe to settle them", and of input registers 21–31 it says "the probe should read them". `docs/design-decisions.md` lists the same point as an open question.
-
-The maintainer agreed this exception explicitly on 2026-11-26, separately from approval of this document. The rule wording in `AGENTS.md`, `docs/modbus-map.md` and the documents that restate it was amended on this branch at the same time (see Constraint 5), so the binding documents and the spec agree.
-
-The vendor's stated risk for an unlabelled read is that it "may return incorrect data". The report therefore labels every extended value as unverified.
-
-### Terms
+### Terms (normative)
 
 - **Standard block**: a read of the vendor's fixed count starting at a first address the vendor table labels as allowed. The complete list is: coils 0; discrete inputs 0 and 48; holding registers 0, 3, 6, 9, 12, 15, 18; input registers 0, 3, 6, 9, 12.
 - **Extended block**: a read of the vendor's fixed count starting at one of the addresses in this list, which is the complete and normative definition: holding register 24; input registers 15, 18, 21, 24, 27, 30. These are the blocks that `docs/modbus-map.md` asks the probe to settle, and no others. Holding block 21 is excluded: its only basis is an older table revision's expansion-valve settings, which the map deliberately leaves out. Input block 30 covers addresses 30 to 32, and no source documents address 32.
@@ -50,134 +13,6 @@ The vendor's stated risk for an unlabelled read is that it "may return incorrect
   When the extended flag is absent, extended blocks are not part of the run: they have no outcome and appear in neither the report, the counts nor the transcript.
 - **Interrupt**: SIGINT (Ctrl-C) or SIGTERM (as sent by `docker stop`). Both are treated the same.
 
-## Requirements
-
-### Requirement 1: Connecting to the gateway
-
-**User story:** As the maintainer, I want to point the probe at my gateway from the command line, so that I can run it without writing a config file.
-
-#### Acceptance criteria
-
-1. THE SYSTEM SHALL accept the gateway host as a required command-line argument.
-2. THE SYSTEM SHALL accept the TCP port, the Modbus unit id and the reply timeout as optional command-line arguments, defaulting to port 4196, unit id 1 and a timeout of 3 seconds.
-3. IF the port is outside 1–65535, the unit id is outside 1–247, or the timeout is outside 0.5–30 seconds, THEN THE SYSTEM SHALL exit with status 2 and a message naming the invalid argument, without opening a connection.
-4. THE SYSTEM SHALL open at most one TCP connection per run and close it before exiting, including when the run is aborted or interrupted.
-5. IF the connection cannot be established within the timeout, THEN THE SYSTEM SHALL exit with status 2 and a message naming the host and port, without retrying.
-6. THE SYSTEM SHALL complete every check that can end the run with status 2 without a connection (argument validation, the output-path check of Requirement 8.4, and the interactivity check of Requirement 4.5) before showing the confirmation prompt.
-
-### Requirement 2: Read-only guarantee
-
-**User story:** As the owner of the heat pump, I want it to be impossible for the probe to change anything on the pump, so that I can run it on an unverified map without risk.
-
-#### Acceptance criteria
-
-1. THE SYSTEM SHALL issue only Modbus function codes 01, 02, 03 and 04.
-2. THE SYSTEM SHALL NOT offer any command-line option or environment variable that changes the set of function codes issued.
-3. THE SYSTEM SHALL route every request through one request sender whose only operation is reading a block, and which calls only the four read operations of the Modbus library.
-
-### Requirement 3: Bus rules
-
-**User story:** As the owner of the heat pump, I want the probe to follow the vendor's bus rules, so that the readings are trustworthy and the pump's controller is not upset.
-
-#### Acceptance criteria
-
-1. THE SYSTEM SHALL read coils and discrete inputs only in blocks of 48 and input and holding registers only in blocks of 3.
-2. THE SYSTEM SHALL start every read at the first address of a standard block or an extended block as listed under Terms, and at no other address.
-3. THE SYSTEM SHALL send requests strictly one at a time, sending the next request only after the previous one has been answered or has timed out.
-4. THE SYSTEM SHALL wait at least 60 ms between the end of one request (reply received or timeout elapsed) and the start of the next.
-5. THE SYSTEM SHALL use Modbus TCP framing (MBAP header with transaction ids), not RTU over TCP, and SHALL rely on the Modbus library to match each reply to its request by transaction id, so that a reply is never attributed to another request.
-6. WHEN a block's outcome is failed for any reason other than connection lost, THE SYSTEM SHALL wait at least 1 second before sending the next request.
-7. THE SYSTEM SHALL NOT retry a block, whatever its outcome, and SHALL disable the Modbus library's automatic retries and automatic reconnection.
-
-### Requirement 4: Confirming the preconditions
-
-**User story:** As the maintainer, I want to be reminded of the bus preconditions before anything is sent, so that I do not run the probe with a second master on the bus.
-
-#### Acceptance criteria
-
-1. WHEN the probe starts without the confirmation flag, THE SYSTEM SHALL print the preconditions (the stock WiFi module is unplugged, the controller container is stopped, no other client is connected to the gateway) and prompt for confirmation before opening a connection.
-2. WHEN the maintainer answers the prompt with exactly `yes`, THE SYSTEM SHALL proceed.
-3. IF the answer is anything else, including empty input and end of input, THEN THE SYSTEM SHALL exit with status 2 without opening a connection. An interrupt at the prompt is not an answer; Requirement 9.1 gives its status.
-4. WHEN the probe starts with the confirmation flag, THE SYSTEM SHALL skip the prompt.
-5. IF standard input is not interactive and the confirmation flag is absent, THEN THE SYSTEM SHALL exit with status 2 and a message naming the flag, without opening a connection.
-
-### Requirement 5: Reading the standard blocks
-
-**User story:** As the maintainer, I want the probe to read everything the vendor says is readable, so that one run gives me the full picture.
-
-#### Acceptance criteria
-
-1. WHEN the probe runs, THE SYSTEM SHALL read every standard block exactly once, in this order: coils, discrete inputs, holding registers, input registers, each in ascending address order.
-2. WHEN a block's outcome is ok, THE SYSTEM SHALL record the raw value of every address in the block, including addresses that are reserved or absent from the map.
-3. WHEN a block's outcome is refused, THE SYSTEM SHALL record the Modbus exception code and continue with the next block.
-4. WHEN a block's outcome is failed, THE SYSTEM SHALL record the reason and continue with the next block, subject to criterion 5.
-5. IF two blocks in a row have the outcome failed, THEN THE SYSTEM SHALL abort the run, record every block not yet read as not attempted, and still produce the report. A refused block does not count towards this limit and resets the count.
-6. IF the connection is lost during the run, THEN THE SYSTEM SHALL NOT reconnect. The block in progress is recorded as failed; when the loss is noticed between two blocks, the next block is recorded as failed. All later blocks are recorded as not attempted.
-
-### Requirement 6: Reading the extended blocks
-
-**User story:** As the maintainer, I want to find out whether the registers outside the vendor's labelled addresses are readable on my unit, without that being the default behaviour.
-
-#### Acceptance criteria
-
-1. WHEN the probe runs without the extended flag, THE SYSTEM SHALL NOT read any extended block.
-2. WHEN the probe runs with the extended flag, THE SYSTEM SHALL read every extended block exactly once, after all standard blocks, in the order holding registers then input registers, each in ascending address order.
-3. IF the standard blocks were aborted under Requirement 5.5 or 5.6, THEN THE SYSTEM SHALL NOT read any extended block.
-4. THE SYSTEM SHALL apply Requirements 5.2 to 5.6 to extended blocks, counting consecutive failed blocks afresh from the first extended block.
-5. THE SYSTEM SHALL report extended blocks in a section separate from the standard blocks, labelled as outside the vendor's allowed first addresses and as unverified.
-
-### Requirement 7: The report
-
-**User story:** As the maintainer, I want a report I can read next to the pump's display, so that I can tell quickly whether the map matches my unit.
-
-#### Acceptance criteria
-
-1. THE SYSTEM SHALL print, for each block, its table, first address and outcome, and for an ok block the raw value of every address in it. For a bit block the raw values may be printed as one string of 48 bits in address order.
-2. THE SYSTEM SHALL print, for each address that has an entry in the project's register map, the register key, its name, the raw value, the decoded value with its unit, and the register's notes, using the project's codec for decoding.
-3. THE SYSTEM SHALL print, for holding registers 0 and 1, the name of the operating mode and power mode that the raw value represents, or "unknown" when the value is not a defined mode.
-4. THE SYSTEM SHALL print the active faults from the discrete input block at address 48, with code, kind and description, or "none" when that block is ok and no fault bit is set.
-5. THE SYSTEM SHALL mark a value as "suspect" when any of these holds: its raw value lies outside the register's defined raw range; its raw value is off the register's raw step counted from its raw minimum; it is a decoded temperature outside −40 °C to 120 °C; it is a raw 0 on input registers 15 to 20, where 0 means unsupported.
-6. THE SYSTEM SHALL print a summary section of the values to compare with the pump's display, naming each register: `power` (coil 0) and `running` (discrete input 0); `operating_mode`; `power_mode`; the setpoint register of the active operating mode; `inlet_temp`, `outlet_temp` and `ambient_temp`.
-7. IF the operating mode is unknown or unavailable, THEN THE SYSTEM SHALL show all three setpoint registers in the summary.
-8. WHEN both `compressor_current` and `pfc_voltage` were read, THE SYSTEM SHALL print the estimated compressor power in W, labelled as estimated.
-9. WHEN the extended flag is set, THE SYSTEM SHALL also print input registers 21 to 25 (board version) and 26 to 29 (model code) as text, labelled as unverified. Because the encoding is unverified, each is printed in two renderings: one character per register taken from the low byte, and two characters per register taken from the high byte then the low byte. A byte that is not printable ASCII is shown as a placeholder, and a register from a block that is not ok is shown as unavailable.
-10. THE SYSTEM SHALL print the counts of blocks ok, refused, failed and not attempted, separately for standard and extended blocks, and SHALL state how the run ended using the same four values as Requirement 8.1.
-11. IF a block is refused, failed or not attempted, THEN THE SYSTEM SHALL show everything derived from it as unavailable, including its registers, the fault list, the summary items and the power estimate, and SHALL NOT show a stale, default or zero value in its place.
-
-### Requirement 8: The transcript
-
-**User story:** As the maintainer, I want the run saved in a machine-readable file, so that I can keep it as evidence and later specs can use it as a test fixture.
-
-#### Acceptance criteria
-
-1. WHEN an output path is given, THE SYSTEM SHALL write a JSON transcript to that path containing exactly: a transcript format version, the probe version, the start time in UTC, the port, unit id and timeout, whether the extended flag was set, how the run ended (complete, aborted after consecutive failures, aborted on connection loss, or interrupted), and for every block in the run its table, first address, count, whether it is extended, outcome, failure reason or exception code if any, and raw values.
-2. THE SYSTEM SHALL NOT write the gateway host, credentials or any other site-specific value to the transcript, so that a transcript can be committed as a test fixture unchanged.
-3. THE SYSTEM SHALL write the transcript when the run is aborted or interrupted after connecting, containing the blocks read so far and the blocks not attempted.
-4. IF the output path already exists and the overwrite flag is absent, or its directory does not exist or is not writable, THEN THE SYSTEM SHALL exit with status 2 before opening a connection.
-5. IF the transcript cannot be written, THEN THE SYSTEM SHALL print the report as normal and print the write error.
-
-### Requirement 9: Exit status
-
-**User story:** As the maintainer, I want the exit status to tell me whether the run was complete and its evidence saved, so that I can use the probe in a script.
-
-#### Acceptance criteria
-
-1. THE SYSTEM SHALL choose the exit status by the first of these rules that applies:
-   1. status 130 when the maintainer interrupted the run, at any point from the confirmation prompt onwards;
-   2. status 2 when the run could not start: invalid arguments, a declined or impossible confirmation, an existing output path, or a failed connection;
-   3. status 1 when any standard block is refused, failed or not attempted, or a requested transcript could not be written;
-   4. status 0 otherwise.
-2. THE SYSTEM SHALL NOT let the outcome of any extended block affect the exit status.
-3. WHEN the maintainer interrupts the run after the connection is open, THE SYSTEM SHALL stop sending requests, close the connection, and produce the report and any requested transcript for the blocks read so far before exiting.
-
-### Requirement 10: Running the probe
-
-**User story:** As the maintainer, I want to run the probe from a checkout or from the Docker image, so that I can use whichever machine can reach the gateway.
-
-#### Acceptance criteria
-
-1. THE SYSTEM SHALL provide the probe as a module inside the `app` package that is invocable with `python -m`, so that it is available both in a development checkout and in the Docker image, which ships only that package.
-2. WHEN run with the help flag, THE SYSTEM SHALL print its usage, including the preconditions of Requirement 4 and the meaning of each exit status, and exit with status 0 without opening a connection.
 
 ## Constraints
 
@@ -197,9 +32,11 @@ These bind the design and the tasks. They are not acceptance criteria.
      - `.claude/skills/live-probe/SKILL.md`: use the probe; in step 3 allow the extended blocks; in step 5 replace "stop on exception codes" with the outcomes defined here (a refused block is an answer, two failed blocks in a row end the run).
    - After the first live run, by the maintainer and not as a task: fill in the verification table in `docs/modbus-map.md`, and move the open question about holding register 25 and input registers 15–31 in `docs/design-decisions.md` to "Decided".
 
-# Part 2: Design
 
-## Overview
+## Design
+
+
+### Overview
 
 The probe uses the project's pinned `pymodbus` (3.16.1) with its asynchronous Modbus TCP client and standard Modbus TCP framing. The gateway is configured as a Modbus TCP to RTU bridge. A thin wrapper, `ReadOnlyLink`, is the only code that touches the client; it exposes one operation, reading a block, and adds the vendor's spacing and the outcome classification.
 
@@ -344,6 +181,7 @@ class ReadOnlyLink:
 4. `reply = await getattr(client, READ_METHODS[spec.table])(spec.start, count=spec.count, device_id=unit_id)`.
    - `ConnectionException` → set `connection_lost`, result `FAILED / CONNECTION_LOST`.
    - `ModbusIOException`, or any other `ModbusException` → `FAILED / NO_REPLY`. Catch `ConnectionException` first.
+   - Any `OSError` → set `connection_lost`, result `FAILED / CONNECTION_LOST`.
    - `reply.isError()`: `exception_code` in `GATEWAY_EXCEPTION_CODES` → `FAILED / GATEWAY_EXCEPTION` with the code; any other code → `REFUSED` with the code.
    - Bit tables: if `len(reply.bits) < spec.count` → `FAILED / WRONG_LENGTH`; otherwise the values are the first `spec.count` bits as 0/1.
    - Register tables: if `len(reply.registers) != spec.count` → `FAILED / WRONG_LENGTH`; otherwise the values are the registers.
@@ -430,6 +268,8 @@ Streams: the preconditions, the prompt and the report go to `stdout`; every erro
 - `main` catches `KeyboardInterrupt` around the prompt and around `asyncio.run` and returns 130.
 - After `run_probe` returns, if `interrupted` is true `main` replaces the run's end with `dataclasses.replace(run, end=RunEnd.INTERRUPTED)`, whatever `run_probe` decided. So an interrupt during the last block, or during a block that also triggers an abort, is reported and exits as interrupted.
 - An interrupt while a block is in flight lets that block finish (at most one timeout), then stops.
+- `ReadOnlyLink` also takes the stop predicate. After the spacing wait, immediately before sending, it checks the predicate and, if it is true, returns the block as `NOT_ATTEMPTED` without sending. So an interrupt during the 60 ms spacing never leads to a new request.
+- An interrupt that arrives while the report is printed or the transcript is produced still makes the exit status 130. The transcript is built from the run end current at that moment and is written again if the interrupt flag changed while it was being written, so the saved `run_end` agrees with the exit status. The report already printed to stdout is not reprinted.
 
 Tests never send a real signal. They pass their own `install_interrupt`, keep the callback it receives, and call it at the chosen moment: from a fake `stdin.readline` for the prompt, from a fake `open` for the connection attempt, and from `FakeClient`'s `on_request` hook during a run.
 
@@ -439,11 +279,11 @@ Each step returns the stated status on failure.
 
 1. Parse arguments with `argparse`. The epilog lists the three preconditions and the four exit statuses.
 2. Validate ranges: port 1–65535, unit id 1–247, timeout 0.5–30. → 2, message names the argument.
-3. If `--output` is given: the path must not exist unless `--overwrite`; its parent directory must exist and be writable (`os.access(parent, os.W_OK)`). → 2.
+3. If `--output` is given: the path must not be a directory, and must not exist unless `--overwrite`; its parent directory must exist and be writable (`os.access(parent, os.W_OK)`). → 2.
 4. If `--yes` is absent and `stdin.isatty()` is false → 2, message names `--yes`.
 5. Call `install_interrupt(on_interrupt)`.
 6. If `--yes` is absent: print the preconditions and a prompt, read one line with `stdin.readline()`; proceed only if `line.rstrip("\r\n") == "yes"`. Anything else, including end of input (an empty string) → 2.
-7. `asyncio.run(_run(...))`. `_run` awaits `open(host, port, timeout)` (an `OSError`, which includes `ConnectionError`, propagates to `main`, which prints a message naming host and port and returns 2), calls `on_connected()`, builds a `ReadOnlyLink` with `allowed` set to the run's plan, awaits `run_probe`, and closes the link in a `finally`.
+7. `asyncio.run(_run(...))`. `_run` awaits `open(host, port, timeout)` (an `OSError`, which includes `ConnectionError`, propagates to `main`, which prints a message naming host and port and returns 2), calls `on_connected()`, builds a `ReadOnlyLink` with `allowed` set to the run's plan, awaits `run_probe`, and closes the client in a `finally` that starts as soon as `open` returns, so an interrupt right after connecting still closes it. `ReadOnlyLink` also treats a raw `OSError` from a read as connection lost.
 8. Apply the interrupt replacement described above, then print `render_report(run)`.
 9. If `--output` is given, write `json.dumps(build_transcript(...), indent=2)`, opening the file with mode `"x"`, or `"w"` when `--overwrite` is set. On `OSError` print the error and remember the failure.
 10. Exit status: 130 if `interrupted`; else 1 if any standard block's outcome is not `OK` or the transcript write failed; else 0.
