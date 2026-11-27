@@ -7,6 +7,7 @@ SRC = app/ tests/ scripts/
 .PHONY: help
 help:
 	@echo "Available targets:"
+	@echo "  hooks       - Install the pre-commit hooks (once per clone)"
 	@echo "  check       - Lint, map-doc check and tests with coverage (run before every commit)"
 	@echo "  test        - Run all tests"
 	@echo "  test-cov    - Run tests with coverage report"
@@ -23,6 +24,10 @@ help:
 
 .PHONY: check
 check: lint test-cov
+
+.PHONY: hooks
+hooks:
+	uvx pre-commit install
 
 .PHONY: test
 test:

@@ -18,18 +18,19 @@ These protect real hardware and override convenience.
 - Never commit, push, tag or open a PR without explicit permission.
 - Never commit to, push to, force-push or merge into `main`. Work on a branch in a worktree under `.claude/worktrees/` (`make worktree name=<topic>`); the user merges reviewed PRs.
 - Stage files by name. Never stage `config.yaml`, `incoming/`, `.agents/` or a secret.
-- Enforced by `.pre-commit-config.yaml` (`no-commit-to-branch`) and, in Claude Code, `.claude/settings.json`.
+- Enforced, once you run `make hooks`, by `.pre-commit-config.yaml` (`no-commit-to-branch`), and in Claude Code by `.claude/settings.json`.
 
 ## How we work
 
 Spec-driven with [OpenSpec](https://github.com/Fission-AI/OpenSpec): `openspec/specs/` is what is built, `openspec/changes/<name>/` is a change in flight (proposal, spec deltas, design, tasks). Full process: `docs/ways-of-working.md`. Do not invent another process.
 
-| Phase | Session | Model | Skill |
+| Phase | Session | Model role | Skill |
 |---|---|---|---|
-| Plan | own session | top tier | `openspec-explore`, `openspec-propose` |
-| Execute | fresh session | mid tier | `openspec-apply-change` |
+| Plan | own session | reasoning | `openspec-explore`, `openspec-propose` |
+| Execute | fresh session | coding | `openspec-apply-change` |
 | Close | after merge | any | `openspec-archive-change` |
 
+Model roles are defined in `docs/ways-of-working.md` (Model roles): *reasoning* for planning, design and safety review; *coding* for implementation. Never name a model in this repo's docs; the maintainer picks one per role in the tool.
 - **Plan:** write the change's artifacts, no application code, then stop for the user's approval.
 - **Execute:** read only the change folder and the files its `design.md` lists. If that is not enough, stop and say what is missing. Tick a task when its verifying command passes.
 - **Review:** you do not review your own work. Before a PR, run `code-reviewer` (and `safety-reviewer` when the change can reach the pump) once, from `.claude/agents/`; in other tools, paste the reviewer file into a fresh session. At most one follow-up round to check fixes.

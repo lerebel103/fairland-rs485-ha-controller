@@ -15,8 +15,8 @@ How a change goes from an idea to a merged pull request. It applies to humans an
 ## Lifecycle
 
 ```
-PLAN     own session, top-tier model          -> maintainer approves the artifacts
-EXECUTE  fresh session, mid-tier model        -> tasks ticked, make check green
+PLAN     own session, reasoning model        -> maintainer approves the artifacts
+EXECUTE  fresh session, coding model           -> tasks ticked, make check green
 REVIEW   code-reviewer (+ safety-reviewer)    -> findings triaged, one follow-up at most
 PR       maintainer permits; CI + Copilot     -> maintainer merges
 CLOSE    archive the change                   -> openspec/specs/ updated
@@ -35,7 +35,7 @@ OpenSpec skills (Claude Code and Kiro list them as `/openspec-*`; Copilot in VS 
 
 ### 1. Plan
 
-Branch and worktree first (`make worktree name=<name> type=spec`). Use the top-tier model; this is the one phase where it earns its cost, because a complete design lets a cheaper model execute without exploring.
+Branch and worktree first (`make worktree name=<name> type=spec`). Use the reasoning model; this is the one phase where its higher cost pays off, because a complete design lets a cheaper model execute without exploring.
 
 1. Run `openspec-propose`. The `design.md` must be execution-ready: exact paths, signatures, schemas, error handling, the files to read, and verification commands (rules in `openspec/config.yaml`).
 2. Run `openspec validate <name> --strict`.
@@ -44,12 +44,12 @@ Branch and worktree first (`make worktree name=<name> type=spec`). Use the top-t
 
 ### 2. Execute
 
-New session, mid-tier model, `openspec-apply-change`. It reads the change folder and the files `design.md` lists, and nothing else. Per task: failing test, code, the task's verifying command, tick. If the design is wrong, fix the design in the same branch and say so in the PR. If execution is stuck after two attempts at the same failure, stop and escalate to the plan model with a five-line summary.
+New session, coding model, `openspec-apply-change`. It reads the change folder and the files `design.md` lists, and nothing else. Per task: failing test, code, the task's verifying command, tick. If the design is wrong, fix the design in the same branch and say so in the PR. If execution is stuck after two attempts at the same failure, stop and escalate to the plan model with a five-line summary.
 
 ### 3. Review
 
 1. `make check` must be green.
-2. Run `code-reviewer` always, and `safety-reviewer` when the diff touches `app/modbus/`, `app/control/`, command handling in `app/ha/`, scripts that open a connection, or `docs/modbus-map.md`. Give each only the worktree path, branch and change name. In Claude Code they run as subagents; elsewhere paste the reviewer file into a fresh session.
+2. Run `code-reviewer` always, and `safety-reviewer` when the diff touches `app/modbus/`, `app/control/`, command handling in `app/ha/`, scripts that open a connection, or `docs/modbus-map.md`. Give each only the worktree path, branch, change name and diff base (the PR's target branch, `main` unless the change is stacked). In Claude Code they run as subagents; elsewhere paste the reviewer file into a fresh session.
 3. Triage every finding (below) and fix what is accepted.
 4. If a blocker or major finding was raised, the same reviewer checks the fixes once. No third round: what is still open goes to the maintainer with both positions.
 5. Save reports under `.agents/reviews/<branch>/` (local) and put a short summary in the PR description.
@@ -58,11 +58,27 @@ New session, mid-tier model, `openspec-apply-change`. It reads the change folder
 
 With the maintainer's permission: commit (prefix `feat`, `fix`, `docs`, `test`, `chore`, `ci`, `spec`), push the branch, open the PR against `main` (or the parent feature branch for a stacked change) using `.github/pull_request_template.md`. Link the change folder and include the review summary. Copilot is requested automatically.
 
-Handle review comments by fetching them with `gh pr view <n> --comments` and `gh api repos/{owner}/{repo}/pulls/<n>/comments`. Check each against the code and the spec, since Copilot has not read the spec. Triage, fix test-first, show the maintainer the diff, push with permission, reply to every thread and resolve it. A comment that exposes a gap in the design is fixed in the design too.
+Handle review comments by fetching them with `gh pr view <n> --comments` and `gh api repos/{owner}/{repo}/pulls/<n>/comments`. Check each against the code and the spec, since Copilot has not read the spec. Triage, fix test-first, and if a fix touches code that can reach the pump, run `safety-reviewer` on it again. Show the maintainer the diff, push with permission, reply to every thread and resolve it. A comment that exposes a gap in the design is fixed in the design too.
 
 ### 5. Close
 
 After merge, run `openspec-archive-change`, update `docs/roadmap.md`, and move any settled question in `docs/design-decisions.md` to Decided.
+
+## Model roles
+
+Work is split by the kind of thinking it needs, not by product name. Documents, skills and prompts in this repo name only a role; the maintainer binds each role to a model in the tool, and rebinding it is the only change needed when models change.
+
+| Role | Used for | Why |
+|---|---|---|
+| reasoning | Exploring, `openspec-propose` (design), `safety-reviewer`, deciding what to do when execution is stuck | Mistakes here are expensive and compound; a stronger, costlier model pays for itself |
+| coding | `openspec-apply-change`, fixing review findings, `code-reviewer`, `openspec-archive-change` | The design already settles the decisions, so a cheaper, faster model is enough |
+
+The only place a model is named is each tool's own setting:
+
+- Claude Code: `model:` in the front matter of `.claude/agents/*.md` (use an alias such as `opus` or `sonnet`, which follow the latest version, or `inherit`), and `/model` for the session.
+- Kiro and Copilot: the chat model picker, per session.
+
+Rule of thumb: if a coding-role session hits the same failure twice, escalate with a five-line summary to a reasoning-role session rather than retrying.
 
 ## Findings
 
@@ -112,4 +128,4 @@ Set once on GitHub by the maintainer.
 
 ## Tool setup
 
-OpenSpec needs Node 22.20+ (`npm i -g @fission-ai/openspec`, or `npx @fission-ai/openspec`). Skills are committed under `.claude/skills/` and `.kiro/skills/`, so nothing needs installing to follow the process. After upgrading OpenSpec, run `openspec update`. Pick the model per phase in the tool's own model selector: Claude Code `/model`, Kiro and Copilot in the chat model picker.
+OpenSpec needs Node 22.20+ (`npm i -g @fission-ai/openspec`, or `npx @fission-ai/openspec`). Skills are committed under `.claude/skills/` and `.kiro/skills/`, so nothing needs installing to follow the process. After upgrading OpenSpec, run `openspec update`. Pick the model per phase as described in Model roles.

@@ -2,14 +2,14 @@
 name: safety-reviewer
 description: Hardware-safety reviewer for changes that can reach the heat pump (Modbus client, register map, control loop, Home Assistant command handling, probe scripts). Use alongside code-reviewer whenever such code changes. Read-only.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: opus  # reasoning role; see docs/ways-of-working.md (Model roles)
 ---
 
 You review a change for one question only: can this harm, misconfigure or confuse the real heat pump? Assume the author is competent and the tests pass; look for the path nobody tested.
 
 Read first: `AGENTS.md` (Heat pump safety rules), `docs/modbus-map.md` (Bus rules, Write policy, Verification), and `docs/ways-of-working.md` (the safety checklist and the severity table).
 
-Get the change with `git diff main...HEAD` in the directory you are given, then trace every path that ends in a Modbus request:
+Get the change with `git diff <base>...HEAD`, where `<base>` is the PR's target branch you are given (default `main`) in the directory you are given, then trace every path that ends in a Modbus request:
 
 - **Writes.** List every call site that can issue function 05 or 06. Each must go through `codec.encode`, target a key in `APP_WRITABLE_KEYS`, and be read back. Any other write path, a raw address, or a change to the allowlist or its pinning test is a blocker unless an approved spec says so.
 - **Verification gate.** While the verification table in `docs/modbus-map.md` is incomplete, no write may be reachable in a default configuration.

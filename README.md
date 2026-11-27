@@ -74,6 +74,7 @@ make up
 
 ```bash
 uv sync --group dev
+make hooks   # once per clone: ruff and no commits on main
 make check
 ```
 
@@ -90,7 +91,7 @@ The project is spec-driven with [OpenSpec](https://github.com/Fission-AI/OpenSpe
 - `.claude/skills/` and `.kiro/skills/`: the `openspec-*` skills, plus `modbus-register`, `live-probe` and `release` in `.claude/skills/`.
 - `.claude/agents/`: read-only reviewer subagents `code-reviewer` and `safety-reviewer`.
 - `.github/`: PR template, review instructions for GitHub Copilot, and a branch ruleset for `main`.
-- `.claude/settings.json`: shared permissions and a hook that blocks commits and pushes on `main`. `.pre-commit-config.yaml` blocks commits on `main` for every tool.
+- `.claude/settings.json`: shared permissions and a hook that blocks commits and pushes on `main`. `.pre-commit-config.yaml` blocks commits on `main` for every tool once `make hooks` has been run.
 - Worktrees live under `.claude/worktrees/` (`make worktree name=<topic>`).
 
 ## License

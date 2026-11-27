@@ -4,6 +4,7 @@
 
 ```
 uv sync --group dev
+make hooks        # installs the pre-commit hooks (ruff, and no commits on main); once per clone
 ```
 
 ## Verification
