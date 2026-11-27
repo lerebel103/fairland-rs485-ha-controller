@@ -4,7 +4,7 @@
 
 ## Spec
 
-- Spec: `specs/NNN-<name>/`
+- OpenSpec change: `openspec/changes/<name>/` (or its `archive/` path)
 - Requirements covered:
 - Tasks completed:
 - Spec changed in this PR: no / yes (what and why)
@@ -19,7 +19,7 @@ Not tested or deferred:
 
 ## Heat pump safety
 
-- [ ] No change to the write allowlist, or the change is covered by an approved spec
+- [ ] No change to the write allowlist, or the change is covered by an approved OpenSpec change
 - [ ] No new path can write to the pump while the map is unverified
 - [ ] Reads keep the vendor block shapes and request spacing
 

@@ -1,8 +1,8 @@
-# Spec 001: Read-only probe — Tasks
+# Tasks
 
-Implement in order. Each task is test-first: write the tests named, watch them fail, then write the code. Tick a task when its verify commands pass; every task also ends with `make check`. Requirement numbers refer to `spec.md` Part 1; design sections to Part 2.
+Implement in order. Each task is test-first: write the tests named, watch them fail, then write the code. Tick a task when its verify commands pass; every task also ends with `make check`. Requirement numbers refer to `specs/readonly-probe/spec.md` (scenario numbers, for example 5.5, are requirement.criterion) and to `design.md`.
 
-Read only `spec.md`, this file, and the files listed in the spec's "Files" section.
+Read only `design.md`, the delta spec, this file and the files listed in the design's "Files" section.
 
 - [x] **1. Standard block starts in the register map**
   - Files: `app/modbus/registers.py`, `scripts/render_modbus_map.py`, `docs/modbus-map.md`, `tests/unit/test_registers.py`

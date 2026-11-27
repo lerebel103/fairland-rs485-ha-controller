@@ -7,13 +7,14 @@ SRC = app/ tests/ scripts/
 .PHONY: help
 help:
 	@echo "Available targets:"
+	@echo "  hooks       - Install the pre-commit hooks (once per clone)"
 	@echo "  check       - Lint, map-doc check and tests with coverage (run before every commit)"
 	@echo "  test        - Run all tests"
 	@echo "  test-cov    - Run tests with coverage report"
 	@echo "  lint        - Run ruff check, ruff format --check and the Modbus map doc check"
 	@echo "  format      - Format code with ruff"
 	@echo "  modbus-map  - Re-render the tables in docs/modbus-map.md from the code"
-	@echo "  worktree    - Create a worktree and branch: make worktree name=<topic> [type=feature|fix|spec]"
+	@echo "  worktree    - Create a worktree and branch: make worktree name=<topic> [type=feature|fix|spec|chore] [base=<branch>]"
 	@echo "  build       - Build Docker image"
 	@echo "  build-multi - Build and push multi-architecture Docker images (amd64, arm64)"
 	@echo "  up/start    - Start the application with docker compose"
@@ -23,6 +24,10 @@ help:
 
 .PHONY: check
 check: lint test-cov
+
+.PHONY: hooks
+hooks:
+	uvx pre-commit install
 
 .PHONY: test
 test:
@@ -48,10 +53,11 @@ modbus-map:
 	uv run python scripts/render_modbus_map.py
 
 type ?= feature
+base ?= main
 .PHONY: worktree
 worktree:
-	@test -n "$(name)" || { echo "usage: make worktree name=<topic> [type=feature|fix|spec]"; exit 1; }
-	git worktree add .claude/worktrees/$(name) -b $(type)/$(name) main
+	@test -n "$(name)" || { echo "usage: make worktree name=<topic> [type=feature|fix|spec|chore] [base=main]"; exit 1; }
+	git worktree add .claude/worktrees/$(name) -b $(type)/$(name) $(base)
 	@echo "Worktree ready: .claude/worktrees/$(name) on branch $(type)/$(name)"
 
 .PHONY: build

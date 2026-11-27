@@ -1,6 +1,6 @@
 # Domain conventions
 
-Units, signs and naming used across the app. Change them only through a spec.
+Units, signs and naming used across the app. Change them only through an OpenSpec change.
 
 ## Units and values
 
